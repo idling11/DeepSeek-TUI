@@ -711,7 +711,6 @@ impl StatusItem {
             StatusItem::Model,
             StatusItem::Cost,
             StatusItem::Status,
-            StatusItem::Coherence,
             StatusItem::Agents,
             StatusItem::ReasoningReplay,
             StatusItem::Cache,
