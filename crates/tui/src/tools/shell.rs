@@ -882,25 +882,33 @@ impl ShellManager {
         let stdout_handle = child.stdout.take().context("Failed to capture stdout")?;
         let stderr_handle = child.stderr.take().context("Failed to capture stderr")?;
 
-        // Spawn threads to read output
-        let stdout_thread = std::thread::spawn(move || {
+        // Spawn threads to read output, using channels so the main thread
+        // can apply a bounded join timeout on Windows where killed-process
+        // pipes may not close promptly (#2571).
+        let (stdout_tx, stdout_rx) = std::sync::mpsc::channel();
+        let (stderr_tx, stderr_rx) = std::sync::mpsc::channel();
+        let _stdout_thread = std::thread::spawn(move || {
             let mut reader = stdout_handle;
             let mut buf = Vec::new();
             let _ = reader.read_to_end(&mut buf);
-            buf
+            stdout_tx.send(buf).ok();
         });
-
-        let stderr_thread = std::thread::spawn(move || {
+        let _stderr_thread = std::thread::spawn(move || {
             let mut reader = stderr_handle;
             let mut buf = Vec::new();
             let _ = reader.read_to_end(&mut buf);
-            buf
+            stderr_tx.send(buf).ok();
         });
+
+        /// Upper bound on how long we wait for reader threads after the
+        /// process has been killed. Prevents a hung read_to_end from
+        /// deadlocking the global tool_exec_lock.
+        const READER_JOIN_TIMEOUT: Duration = Duration::from_secs(5);
 
         // Wait with timeout
         if let Some(status) = child.wait_timeout(timeout)? {
-            let stdout = stdout_thread.join().unwrap_or_default();
-            let stderr = stderr_thread.join().unwrap_or_default();
+            let stdout = stdout_rx.recv().unwrap_or_default();
+            let stderr = stderr_rx.recv().unwrap_or_default();
             let stdout_str = String::from_utf8_lossy(&stdout).to_string();
             let stderr_str = String::from_utf8_lossy(&stderr).to_string();
             let exit_code = status.code().unwrap_or(-1);
@@ -942,8 +950,12 @@ impl ShellManager {
             #[cfg(not(unix))]
             let _ = child.kill();
             let status = child.wait().ok();
-            let stdout = stdout_thread.join().unwrap_or_default();
-            let stderr = stderr_thread.join().unwrap_or_default();
+            let stdout = stdout_rx
+                .recv_timeout(READER_JOIN_TIMEOUT)
+                .unwrap_or_default();
+            let stderr = stderr_rx
+                .recv_timeout(READER_JOIN_TIMEOUT)
+                .unwrap_or_default();
             let stdout_str = String::from_utf8_lossy(&stdout).to_string();
             let stderr_str = String::from_utf8_lossy(&stderr).to_string();
             let (stdout, stdout_meta) = truncate_with_meta(&stdout_str);
