@@ -154,21 +154,21 @@ fn auto_sidebar_panels(state: AutoSidebarState) -> Vec<AutoSidebarPanel> {
 }
 
 #[derive(Debug, Clone)]
-struct SidebarWorkChecklistItem {
-    id: u32,
-    content: String,
-    status: TodoStatus,
+pub(crate) struct SidebarWorkChecklistItem {
+    pub(crate) id: u32,
+    pub(crate) content: String,
+    pub(crate) status: TodoStatus,
 }
 
 #[derive(Debug, Clone)]
-struct SidebarWorkStrategyStep {
-    text: String,
-    status: StepStatus,
-    elapsed: String,
+pub(crate) struct SidebarWorkStrategyStep {
+    pub(crate) text: String,
+    pub(crate) status: StepStatus,
+    pub(crate) elapsed: String,
 }
 
 #[derive(Debug, Clone, Default)]
-struct SidebarWorkSummary {
+pub(crate) struct SidebarWorkSummary {
     goal_objective: Option<String>,
     goal_token_budget: Option<u32>,
     goal_completed: bool,
@@ -226,56 +226,83 @@ impl SidebarWorkSummary {
     }
 }
 
-fn sidebar_work_summary(app: &App) -> SidebarWorkSummary {
-    let mut summary = SidebarWorkSummary {
-        goal_objective: app.hunt.quarry.clone(),
-        goal_token_budget: app.hunt.token_budget,
-        goal_completed: app.hunt.verdict == HuntVerdict::Hunted,
-        goal_started_at: app.hunt.started_at,
-        tokens_used: app.session.total_conversation_tokens,
-        ..SidebarWorkSummary::default()
-    };
+fn sidebar_work_summary(app: &mut App) -> SidebarWorkSummary {
+    // Try to build a fresh summary from the shared mutexes. When either
+    // lock is busy (engine is updating state in another tokio task),
+    // fall back to the last cached snapshot instead of wiping the panel.
+    let fresh = (|| {
+        let todos = app.todos.try_lock().ok()?;
+        let plan = app.plan_state.try_lock().ok()?;
 
-    match app.todos.try_lock() {
-        Ok(todos) => {
-            let snapshot = todos.snapshot();
-            summary.checklist_completion_pct = snapshot.completion_pct;
-            summary.checklist_items = snapshot
-                .items
-                .into_iter()
-                .map(|item| SidebarWorkChecklistItem {
-                    id: item.id,
-                    content: item.content,
-                    status: item.status,
-                })
-                .collect();
-        }
-        Err(_) => {
-            summary.state_updating = true;
-        }
-    }
+        let todos_snapshot = todos.snapshot();
+        let checklist_completion_pct = todos_snapshot.completion_pct;
+        let checklist_items: Vec<SidebarWorkChecklistItem> = todos_snapshot
+            .items
+            .into_iter()
+            .map(|item| SidebarWorkChecklistItem {
+                id: item.id,
+                content: item.content,
+                status: item.status,
+            })
+            .collect();
 
-    match app.plan_state.try_lock() {
-        Ok(plan) => {
-            if !plan.is_empty() {
-                summary.strategy_explanation = plan.explanation().map(str::to_string);
-                summary.strategy_steps = plan
-                    .steps()
+        let (strategy_explanation, strategy_steps) = if plan.is_empty() {
+            (None, Vec::new())
+        } else {
+            (
+                plan.explanation().map(str::to_string),
+                plan.steps()
                     .iter()
                     .map(|step| SidebarWorkStrategyStep {
                         text: step.text.clone(),
                         status: step.status.clone(),
                         elapsed: step.elapsed_str(),
                     })
-                    .collect();
-            }
-        }
-        Err(_) => {
-            summary.state_updating = true;
-        }
+                    .collect(),
+            )
+        };
+
+        Some(SidebarWorkSummary {
+            goal_objective: app.hunt.quarry.clone(),
+            goal_token_budget: app.hunt.token_budget,
+            goal_completed: app.hunt.verdict == HuntVerdict::Hunted,
+            goal_started_at: app.hunt.started_at,
+            tokens_used: app.session.total_conversation_tokens,
+            checklist_completion_pct,
+            checklist_items,
+            strategy_explanation,
+            strategy_steps,
+            state_updating: false,
+        })
+    })();
+
+    if let Some(summary) = fresh {
+        app.cached_work_summary = Some(summary.clone());
+        return summary;
     }
 
-    summary
+    // Fall back to cached snapshot. Only emit "updating" when there is
+    // genuinely nothing to show (first render before any todos exist).
+    if let Some(ref cached) = app.cached_work_summary {
+        let mut summary = cached.clone();
+        // Keep hunt/goal fields live even when locks are busy.
+        summary.goal_objective = app.hunt.quarry.clone();
+        summary.goal_token_budget = app.hunt.token_budget;
+        summary.goal_completed = app.hunt.verdict == HuntVerdict::Hunted;
+        summary.goal_started_at = app.hunt.started_at;
+        summary.tokens_used = app.session.total_conversation_tokens;
+        return summary;
+    }
+
+    SidebarWorkSummary {
+        goal_objective: app.hunt.quarry.clone(),
+        goal_token_budget: app.hunt.token_budget,
+        goal_completed: app.hunt.verdict == HuntVerdict::Hunted,
+        goal_started_at: app.hunt.started_at,
+        tokens_used: app.session.total_conversation_tokens,
+        state_updating: true,
+        ..SidebarWorkSummary::default()
+    }
 }
 
 fn work_panel_lines(
@@ -1946,8 +1973,8 @@ mod tests {
         AutoSidebarState, SidebarAgentRow, SidebarHoverSection, SidebarHoverState,
         SidebarSubagentSummary, SidebarToolRow, SidebarWorkChecklistItem, SidebarWorkStrategyStep,
         SidebarWorkSummary, ToolRowOrder, auto_sidebar_panels, editorial_tool_rows,
-        normalize_activity_text, subagent_panel_lines, task_panel_lines, work_panel_empty_hint,
-        work_panel_lines,
+        normalize_activity_text, sidebar_work_summary, subagent_panel_lines, task_panel_lines,
+        work_panel_empty_hint, work_panel_lines,
     };
     use crate::config::Config;
     use crate::palette;
@@ -1955,7 +1982,7 @@ mod tests {
     use crate::tools::plan::StepStatus;
     use crate::tools::todo::TodoStatus;
     use crate::tui::active_cell::ActiveCell;
-    use crate::tui::app::{App, TaskPanelEntry, TuiOptions};
+    use crate::tui::app::{App, HuntVerdict, TaskPanelEntry, TuiOptions};
     use crate::tui::history::{
         ExecCell, ExecSource, GenericToolCell, HistoryCell, ToolCell, ToolStatus,
     };
@@ -2243,6 +2270,82 @@ mod tests {
                 .any(|line| line.contains("High-level sequencing")),
             "non-empty plan explanation should render: {text:?}"
         );
+    }
+
+    // ── SidebarWorkSummary cache tests ──────────────────────────────
+
+    #[test]
+    fn sidebar_work_summary_caches_on_success() {
+        let mut app = create_test_app();
+        {
+            let mut todos = app.todos.try_lock().expect("todos lock");
+            todos.add("cache test".to_string(), TodoStatus::InProgress);
+        }
+
+        let summary = sidebar_work_summary(&mut app);
+        assert!(!summary.state_updating, "should not be updating");
+        assert_eq!(summary.checklist_items.len(), 1);
+        assert!(
+            app.cached_work_summary.is_some(),
+            "cache should be populated"
+        );
+    }
+
+    #[test]
+    fn sidebar_work_summary_falls_back_to_cache_when_todos_lock_busy() {
+        let mut app = create_test_app();
+        {
+            let mut todos = app.todos.try_lock().expect("todos lock");
+            todos.add("will be cached".to_string(), TodoStatus::Completed);
+        }
+        let _first = sidebar_work_summary(&mut app);
+        assert!(app.cached_work_summary.is_some());
+
+        let held_arc = app.todos.clone();
+        let _held = held_arc.try_lock().expect("hold todos lock");
+
+        let summary = sidebar_work_summary(&mut app);
+        assert!(!summary.state_updating, "should fall back to cache");
+        assert!(
+            summary
+                .checklist_items
+                .iter()
+                .any(|i| i.content == "will be cached"),
+            "cached item should be present"
+        );
+    }
+
+    #[test]
+    fn sidebar_work_summary_returns_updating_when_no_cache_and_locks_busy() {
+        let mut app = create_test_app();
+        let held_arc = app.todos.clone();
+        let _held = held_arc.try_lock().expect("hold todos lock");
+
+        let summary = sidebar_work_summary(&mut app);
+        assert!(summary.state_updating, "should be updating without cache");
+    }
+
+    #[test]
+    fn sidebar_work_summary_keeps_live_fields_on_cache_fallback() {
+        let mut app = create_test_app();
+        app.hunt.quarry = Some("test quarry".to_string());
+        app.hunt.verdict = HuntVerdict::Hunted;
+
+        {
+            let mut todos = app.todos.try_lock().expect("todos lock");
+            todos.add("item".to_string(), TodoStatus::Pending);
+        }
+        let _first = sidebar_work_summary(&mut app);
+
+        app.hunt.quarry = Some("updated quarry".to_string());
+        app.hunt.verdict = HuntVerdict::Hunting;
+
+        let held_arc = app.todos.clone();
+        let _held = held_arc.try_lock().expect("hold todos lock");
+
+        let summary = sidebar_work_summary(&mut app);
+        assert_eq!(summary.goal_objective.as_deref(), Some("updated quarry"));
+        assert!(!summary.goal_completed, "verdict should be live (Hunting)");
     }
 
     #[test]

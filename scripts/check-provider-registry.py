@@ -103,7 +103,7 @@ def provider_tables(config_rs: str) -> set[str]:
     )
     struct_end = require_index(config_rs, "\n}", "ProvidersToml struct", struct_start)
     fields = re.findall(
-        r"pub\s+([a-z0-9_]+)\s*:\s*ProviderConfigToml",
+        r"pub\s+([a-zA-Z0-9_]+)\s*:\s*ProviderConfigToml",
         config_rs[struct_start:struct_end],
     )
     if not fields:
@@ -118,7 +118,7 @@ def shipped_provider_rows(providers_md: str) -> set[str]:
 
 def shipped_provider_tables(providers_md: str) -> set[str]:
     table = markdown_section(providers_md, "## Shipped Providers")
-    return set(re.findall(r"\|\s*`\[providers\.([a-z0-9_]+)\]`\s*\|", table))
+    return set(re.findall(r"\|\s*`\[providers\.([a-zA-Z0-9_]+)\]`\s*\|", table))
 
 
 def static_registry_provider_rows(providers_md: str) -> set[str]:

@@ -194,6 +194,7 @@ pub struct ProviderConfigToml {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[allow(non_snake_case)]
 pub struct ProvidersToml {
     #[serde(default)]
     pub deepseek: ProviderConfigToml,
@@ -217,6 +218,9 @@ pub struct ProvidersToml {
     pub fireworks: ProviderConfigToml,
     #[serde(default)]
     pub siliconflow: ProviderConfigToml,
+    #[serde(default)]
+    #[allow(non_snake_case)]
+    pub siliconflow_CN: ProviderConfigToml,
     #[serde(default)]
     pub arcee: ProviderConfigToml,
     #[serde(default)]
@@ -262,7 +266,8 @@ impl ProvidersToml {
             ProviderKind::XiaomiMimo => &self.xiaomi_mimo,
             ProviderKind::Novita => &self.novita,
             ProviderKind::Fireworks => &self.fireworks,
-            ProviderKind::Siliconflow | ProviderKind::SiliconflowCN => &self.siliconflow,
+            ProviderKind::Siliconflow => &self.siliconflow,
+            ProviderKind::SiliconflowCN => &self.siliconflow_CN,
             ProviderKind::Arcee => &self.arcee,
             ProviderKind::Moonshot => &self.moonshot,
             ProviderKind::Sglang => &self.sglang,
@@ -283,7 +288,8 @@ impl ProvidersToml {
             ProviderKind::XiaomiMimo => &mut self.xiaomi_mimo,
             ProviderKind::Novita => &mut self.novita,
             ProviderKind::Fireworks => &mut self.fireworks,
-            ProviderKind::Siliconflow | ProviderKind::SiliconflowCN => &mut self.siliconflow,
+            ProviderKind::Siliconflow => &mut self.siliconflow,
+            ProviderKind::SiliconflowCN => &mut self.siliconflow_CN,
             ProviderKind::Arcee => &mut self.arcee,
             ProviderKind::Moonshot => &mut self.moonshot,
             ProviderKind::Sglang => &mut self.sglang,
@@ -2465,7 +2471,9 @@ impl EnvRuntimeOverrides {
             ProviderKind::XiaomiMimo => self.xiaomi_mimo_base_url.clone(),
             ProviderKind::Novita => self.novita_base_url.clone(),
             ProviderKind::Fireworks => self.fireworks_base_url.clone(),
-            ProviderKind::Siliconflow | ProviderKind::SiliconflowCN => self.siliconflow_base_url.clone(),
+            ProviderKind::Siliconflow | ProviderKind::SiliconflowCN => {
+                self.siliconflow_base_url.clone()
+            }
             ProviderKind::Arcee => self.arcee_base_url.clone(),
             ProviderKind::Moonshot => self.moonshot_base_url.clone(),
             ProviderKind::Sglang => self.sglang_base_url.clone(),
@@ -2478,7 +2486,9 @@ impl EnvRuntimeOverrides {
         let model = match provider {
             ProviderKind::WanjieArk => self.wanjie_ark_model.clone(),
             ProviderKind::Volcengine => self.volcengine_model.clone(),
-            ProviderKind::Siliconflow | ProviderKind::SiliconflowCN => self.siliconflow_model.clone(),
+            ProviderKind::Siliconflow | ProviderKind::SiliconflowCN => {
+                self.siliconflow_model.clone()
+            }
             ProviderKind::Arcee => self.arcee_model.clone(),
             ProviderKind::Moonshot => self.moonshot_model.clone(),
             ProviderKind::XiaomiMimo => self.xiaomi_mimo_model.clone(),

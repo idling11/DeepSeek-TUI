@@ -34,6 +34,7 @@ enum ProviderArg {
     Novita,
     Fireworks,
     Siliconflow,
+    SiliconflowCN,
     Arcee,
     Moonshot,
     Sglang,
@@ -55,6 +56,7 @@ impl From<ProviderArg> for ProviderKind {
             ProviderArg::Novita => ProviderKind::Novita,
             ProviderArg::Fireworks => ProviderKind::Fireworks,
             ProviderArg::Siliconflow => ProviderKind::Siliconflow,
+            ProviderArg::SiliconflowCN => ProviderKind::SiliconflowCN,
             ProviderArg::Arcee => ProviderKind::Arcee,
             ProviderArg::Moonshot => ProviderKind::Moonshot,
             ProviderArg::Sglang => ProviderKind::Sglang,
@@ -749,11 +751,12 @@ fn provider_slot(provider: ProviderKind) -> &'static str {
         ProviderKind::Sglang => "sglang",
         ProviderKind::Vllm => "vllm",
         ProviderKind::Ollama => "ollama",
+        ProviderKind::SiliconflowCN => "siliconflow-cn",
     }
 }
 
 /// Provider order used by the `auth list` and `auth status` outputs.
-const PROVIDER_LIST: [ProviderKind; 16] = [
+const PROVIDER_LIST: [ProviderKind; 17] = [
     ProviderKind::Deepseek,
     ProviderKind::NvidiaNim,
     ProviderKind::Openai,
@@ -765,6 +768,7 @@ const PROVIDER_LIST: [ProviderKind; 16] = [
     ProviderKind::Novita,
     ProviderKind::Fireworks,
     ProviderKind::Siliconflow,
+    ProviderKind::SiliconflowCN,
     ProviderKind::Arcee,
     ProviderKind::Moonshot,
     ProviderKind::Sglang,
@@ -839,6 +843,7 @@ fn provider_env_vars(provider: ProviderKind) -> &'static [&'static str] {
             "WANJIE_API_KEY",
             "WANJIE_MAAS_API_KEY",
         ],
+        ProviderKind::SiliconflowCN => &["SILICONFLOW_API_KEY"],
     }
 }
 
@@ -1519,9 +1524,10 @@ fn build_tui_command(
             | ProviderKind::Sglang
             | ProviderKind::Vllm
             | ProviderKind::Ollama
+            | ProviderKind::SiliconflowCN
     ) {
         bail!(
-            "The interactive TUI supports DeepSeek, NVIDIA NIM, OpenAI-compatible, AtlasCloud, Wanjie Ark, OpenRouter, Xiaomi MiMo, Novita, Fireworks, SiliconFlow, Arcee AI, Moonshot/Kimi, SGLang, vLLM, and Ollama providers. Remove --provider {} or use `codewhale model ...` for provider registry inspection.",
+            "The interactive TUI supports DeepSeek, NVIDIA NIM, OpenAI-compatible, AtlasCloud, Wanjie Ark, OpenRouter, Xiaomi MiMo, Novita, Fireworks, SiliconFlow, SiliconFlow CN, Arcee AI, Moonshot/Kimi, SGLang, vLLM, and Ollama providers. Remove --provider {} or use `codewhale model ...` for provider registry inspection.",
             resolved_runtime.provider.as_str()
         );
     }
@@ -3029,6 +3035,11 @@ mod tests {
             (
                 ProviderKind::Siliconflow,
                 "siliconflow",
+                &["SILICONFLOW_API_KEY"],
+            ),
+            (
+                ProviderKind::SiliconflowCN,
+                "siliconflow-cn",
                 &["SILICONFLOW_API_KEY"],
             ),
             (ProviderKind::Arcee, "arcee", &["ARCEE_API_KEY"]),
