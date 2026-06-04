@@ -203,6 +203,9 @@ pub struct Settings {
     pub auto_compact_threshold_percent: f64,
     /// Reduce status noise and collapse details more aggressively
     pub calm_mode: bool,
+    /// Minimum consecutive tool calls to trigger collapse (default 3, 0 disables).
+    #[serde(default = "default_tool_collapse_threshold")]
+    pub tool_collapse_threshold: usize,
     /// Streaming pacing mode. `true` pins the chunker to one-character-per-
     /// commit-tick (typewriter); `false` drains the upstream cadence (each
     /// commit flushes everything queued, which matches V4-pro's burst pattern
@@ -319,6 +322,10 @@ pub struct Settings {
     pub prefer_external_pdftotext: bool,
 }
 
+fn default_tool_collapse_threshold() -> usize {
+    3
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Self {
@@ -330,6 +337,7 @@ impl Default for Settings {
             auto_compact: false,
             auto_compact_threshold_percent: 80.0,
             calm_mode: false,
+            tool_collapse_threshold: 3,
             low_motion: false,
             fancy_animations: true,
             bracketed_paste: true,

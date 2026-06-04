@@ -367,6 +367,11 @@ pub(crate) fn handle_mouse_event(app: &mut App, mouse: MouseEvent) -> Vec<ViewEv
                 return Vec::new();
             }
 
+            // Check for click on collapsed tool-run summary to expand.
+            if toggle_tool_run_expand(app, mouse) {
+                return Vec::new();
+            }
+
             if let Some(point) = selection_point_from_mouse(app, mouse) {
                 app.viewport.transcript_selection.anchor = Some(point);
                 app.viewport.transcript_selection.head = Some(point);
@@ -691,6 +696,43 @@ pub(crate) fn build_context_menu_entries(app: &App, mouse: MouseEvent) -> Vec<Co
     });
 
     entries
+}
+
+/// Toggle a collapsed tool-run summary on click. Returns true if handled.
+fn toggle_tool_run_expand(app: &mut App, mouse: MouseEvent) -> bool {
+    let Some(area) = app.viewport.last_transcript_area else {
+        return false;
+    };
+    if mouse.column < area.x
+        || mouse.column >= area.x.saturating_add(area.width)
+        || mouse.row < area.y
+        || mouse.row >= area.y.saturating_add(area.height)
+    {
+        return false;
+    }
+    let Some(filtered_idx) = transcript_cell_index_from_mouse(app, mouse) else {
+        return false;
+    };
+    let Some(original_idx) = app.collapsed_cell_map.get(filtered_idx).copied() else {
+        return false;
+    };
+    // Toggle: if already expanded, collapse it; otherwise expand.
+    if app.expanded_tool_runs.contains(&original_idx) {
+        app.expanded_tool_runs.remove(&original_idx);
+        app.mark_history_updated();
+        return true;
+    }
+    let tool_runs = if app.tool_collapse_threshold > 0 {
+        crate::tui::history::detect_tool_runs(&app.history, app.tool_collapse_threshold)
+    } else {
+        return false;
+    };
+    if tool_runs.iter().any(|r| r.start == original_idx) {
+        app.expanded_tool_runs.insert(original_idx);
+        app.mark_history_updated();
+        return true;
+    }
+    false
 }
 
 pub(crate) fn transcript_cell_index_from_mouse(app: &App, mouse: MouseEvent) -> Option<usize> {

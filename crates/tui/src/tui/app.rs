@@ -1603,6 +1603,10 @@ pub struct App {
     /// content). Stores **original** virtual cell indices. Toggled by Space
     /// when the composer is empty and the cursor is on a thinking cell.
     pub folded_thinking: HashSet<usize>,
+    /// Minimum consecutive tool calls to trigger collapse (default 3, 0 disables).
+    pub tool_collapse_threshold: usize,
+    /// Which tool-run start indices are currently expanded (user clicked).
+    pub expanded_tool_runs: HashSet<usize>,
     /// Mapping from filtered cell index → original virtual index.
     /// Populated during `ChatWidget::new` by filtering out collapsed cells.
     /// Used by `build_context_menu_entries` to convert line-meta indices
@@ -2174,6 +2178,8 @@ impl App {
             last_pinned_prefix_hash: None,
             collapsed_cells: HashSet::new(),
             folded_thinking: HashSet::new(),
+            tool_collapse_threshold: settings.tool_collapse_threshold,
+            expanded_tool_runs: HashSet::new(),
             collapsed_cell_map: Vec::new(),
             edit_in_progress: false,
             lsp_enabled: config.lsp.as_ref().and_then(|l| l.enabled).unwrap_or(true),
@@ -2611,6 +2617,7 @@ impl App {
     }
 
     pub fn mark_history_updated(&mut self) {
+        self.expanded_tool_runs.clear();
         self.history_version = self.history_version.wrapping_add(1);
         // Resync per-cell revisions to history.len(). This is the
         // "I-don't-know-which-cell-changed" path: if cells were appended in
