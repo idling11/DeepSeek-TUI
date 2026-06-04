@@ -1103,13 +1103,28 @@ pub struct SidebarHoverState {
     pub sections: Vec<SidebarHoverSection>,
 }
 
+/// Per-row metadata for rich sidebar popovers.
+#[derive(Debug, Clone)]
+pub struct SidebarHoverRow {
+    /// Absolute row position in the terminal.
+    pub row_y: u16,
+    /// Full untruncated line text.
+    pub full_text: String,
+    /// Extra detail line (status, timing, sub-step info).
+    pub detail: Option<String>,
+    /// Whether the rendered text was truncated.
+    pub is_truncated: bool,
+}
+
 /// Per-section metadata for sidebar hover detection.
 #[derive(Debug, Clone)]
 pub struct SidebarHoverSection {
     /// Content area within the section (inside border + padding).
     pub content_area: Rect,
-    /// Full original text for each content line rendered.
+    /// Full original text for each content line rendered (legacy flat format).
     pub lines: Vec<String>,
+    /// Per-row metadata for popover detail (new v0.9.0 rich format).
+    pub rows: Vec<SidebarHoverRow>,
 }
 
 impl Default for SessionState {

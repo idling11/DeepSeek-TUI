@@ -24,7 +24,9 @@ use crate::tools::plan::StepStatus;
 use crate::tools::subagent::SubAgentStatus;
 use crate::tools::todo::TodoStatus;
 
-use super::app::{App, SidebarFocus, SidebarHoverSection, SidebarHoverState, TaskPanelEntry};
+use super::app::{
+    App, SidebarFocus, SidebarHoverRow, SidebarHoverSection, SidebarHoverState, TaskPanelEntry,
+};
 use super::history::{GenericToolCell, HistoryCell, ToolCell, ToolStatus, summarize_tool_output};
 use super::subagent_routing::active_fanout_counts;
 use super::ui_text::{concise_shell_command_label, truncate_line_to_width};
@@ -1918,9 +1920,25 @@ fn render_sidebar_section(
         width: area.width.saturating_sub(2 + padding.left + padding.right),
         height: area.height.saturating_sub(2 + padding.top + padding.bottom),
     };
+    let rows: Vec<SidebarHoverRow> = full_texts
+        .iter()
+        .enumerate()
+        .map(|(idx, text)| {
+            let row_y = content_area.y.saturating_add(idx as u16);
+            let is_truncated =
+                unicode_width::UnicodeWidthStr::width(text.as_str()) > content_area.width as usize;
+            SidebarHoverRow {
+                row_y,
+                full_text: text.clone(),
+                detail: None,
+                is_truncated,
+            }
+        })
+        .collect();
     app.sidebar_hover.sections.push(SidebarHoverSection {
         content_area,
         lines: full_texts,
+        rows,
     });
     // Truncate the panel title so it always fits within the section width
     // even after a resize. The title occupies up to 4 chars of border chrome
@@ -2987,6 +3005,7 @@ mod tests {
         let section = SidebarHoverSection {
             content_area: Rect::new(1, 1, 38, 8),
             lines: vec!["line 1".to_string(), "line 2".to_string()],
+            rows: vec![],
         };
         assert_eq!(section.lines.len(), 2);
         assert_eq!(section.lines[0], "line 1");
@@ -3003,6 +3022,7 @@ mod tests {
                 "second".to_string(),
                 "third".to_string(),
             ],
+            rows: vec![],
         };
 
         // Mouse within content area, first line

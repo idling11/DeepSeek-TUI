@@ -289,11 +289,7 @@ pub(crate) fn handle_mouse_event(app: &mut App, mouse: MouseEvent) -> Vec<ViewEv
             // Update last mouse position for tooltip rendering.
             app.last_mouse_pos = Some((mouse.column, mouse.row));
 
-            // Check sidebar sections for hover tooltip. Only surface a tooltip
-            // when the hovered line was actually truncated to fit the panel
-            // width — otherwise it just paints a redundant copy of
-            // already-visible text over the neighbouring row, which reads as
-            // visual corruption.
+            // Check sidebar section rows for hover popover.
             let mut found = false;
             for section in &app.sidebar_hover.sections {
                 if mouse.column >= section.content_area.x
@@ -309,6 +305,28 @@ pub(crate) fn handle_mouse_event(app: &mut App, mouse: MouseEvent) -> Vec<ViewEv
                             .y
                             .saturating_add(section.content_area.height)
                 {
+                    // Prefer per-row metadata (new) over flat lines (legacy).
+                    if !section.rows.is_empty() {
+                        for row in &section.rows {
+                            if row.row_y == mouse.row && row.is_truncated {
+                                let tooltip = if let Some(ref detail) = row.detail {
+                                    format!("{}\n{}", row.full_text, detail)
+                                } else {
+                                    row.full_text.clone()
+                                };
+                                if app.sidebar_hover_tooltip.as_deref() != Some(&tooltip) {
+                                    app.sidebar_hover_tooltip = Some(tooltip);
+                                    app.needs_redraw = true;
+                                }
+                                found = true;
+                                break;
+                            }
+                        }
+                        if found {
+                            break;
+                        }
+                    }
+                    // Fall back to flat lines for sections without rows.
                     let line_idx = (mouse.row.saturating_sub(section.content_area.y)) as usize;
                     if let Some(full) = section.lines.get(line_idx) {
                         let truncated = UnicodeWidthStr::width(full.as_str())

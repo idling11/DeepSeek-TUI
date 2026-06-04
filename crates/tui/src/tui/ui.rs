@@ -6764,35 +6764,47 @@ fn render(f: &mut Frame, app: &mut App) {
                 }
             }
 
-            // Render sidebar hover tooltip if active.
+            // Render sidebar hover popover if active.
             if let Some(ref tooltip_text) = app.sidebar_hover_tooltip
                 && let Some((mouse_col, mouse_row)) = app.last_mouse_pos
             {
-                let text_width = (tooltip_text.len() as u16).clamp(10, 60);
-                let tooltip_height = 1u16;
+                let popup_width = (72u16.min(size.width.saturating_sub(4))).max(30);
+
+                // Rough height: count newlines + estimate wrapped lines.
+                let raw_lines = tooltip_text.lines().count() as u16;
+                let est_wrapped = raw_lines
+                    .saturating_add((tooltip_text.len() as u16).saturating_div(popup_width.max(1)));
+                let popup_content_height = est_wrapped.clamp(1, 10);
+                let popup_height = popup_content_height + 2; // +2 for border
+
                 let x = mouse_col
                     .saturating_add(2)
-                    .min(size.width.saturating_sub(text_width));
-                // Sit one row BELOW the cursor so the tooltip never paints over
-                // the row above the hovered line (which read as corruption).
+                    .min(size.width.saturating_sub(popup_width));
                 let y = mouse_row
                     .saturating_add(1)
-                    .min(size.height.saturating_sub(tooltip_height));
-                if text_width > 0 && tooltip_height > 0 {
-                    let tooltip_area = Rect {
+                    .min(size.height.saturating_sub(popup_height));
+
+                if popup_width > 4 {
+                    let popup_area = Rect {
                         x,
                         y,
-                        width: text_width,
-                        height: tooltip_height,
+                        width: popup_width,
+                        height: popup_height,
                     };
-                    // Neutral elevated-surface styling so the tooltip reads as a
-                    // tooltip, not a warning highlight (was STATUS_WARNING).
-                    let tooltip = ratatui::widgets::Paragraph::new(tooltip_text.as_str()).style(
-                        Style::default()
-                            .bg(palette::SURFACE_ELEVATED)
-                            .fg(palette::TEXT_PRIMARY),
-                    );
-                    f.render_widget(tooltip, tooltip_area);
+
+                    let popup = ratatui::widgets::Paragraph::new(tooltip_text.as_str())
+                        .wrap(ratatui::widgets::Wrap { trim: false })
+                        .block(
+                            ratatui::widgets::Block::default()
+                                .borders(ratatui::widgets::Borders::ALL)
+                                .border_style(Style::default().fg(palette::DEEPSEEK_BLUE))
+                                .style(
+                                    Style::default()
+                                        .bg(palette::SURFACE_ELEVATED)
+                                        .fg(palette::TEXT_PRIMARY),
+                                ),
+                        );
+                    f.render_widget(popup, popup_area);
                 }
             }
         }
