@@ -4960,8 +4960,12 @@ impl App {
         if self.fallback_providers.is_empty() {
             return false;
         }
-        let current_depth = self.fallback_depth.unwrap_or(0);
-        let next_depth = current_depth + 1;
+        // When fallback_depth is None, the primary provider is active.
+        // The first fallback goes to index 0, not index 1.
+        let next_depth = match self.fallback_depth {
+            None => 0,
+            Some(d) => d + 1,
+        };
         if next_depth >= self.fallback_providers.len() {
             self.last_fallback_reason = Some(format!(
                 "Fallback chain exhausted after {}: {}",
