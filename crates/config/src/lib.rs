@@ -391,7 +391,10 @@ impl ProviderChain {
     }
 
     pub fn current(&self) -> ProviderKind {
-        self.providers[self.position]
+        self.providers
+            .get(self.position)
+            .copied()
+            .unwrap_or(self.providers[0])
     }
 
     pub fn has_next(&self) -> bool {
