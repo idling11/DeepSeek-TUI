@@ -4666,7 +4666,7 @@ impl App {
 
     /// When the composer input exceeds [`MAX_SUBMITTED_INPUT_CHARS`], write
     /// the full content to a timestamped paste file under
-    /// `.deepseek/pastes/` and replace `self.input` with an `@`-mention
+    /// `.codewhale/pastes/` and replace `self.input` with an `@`-mention
     /// pointing at it so the model can read the full content via the
     /// normal file-mention resolution path (#553).
     fn consolidate_large_input(&mut self) {
@@ -4676,9 +4676,9 @@ impl App {
         let now = chrono::Local::now();
         let suffix = uuid::Uuid::new_v4().to_string()[..8].to_string();
         let filename = format!("paste-{}-{}.md", now.format("%Y-%m-%d-%H%M%S"), suffix);
-        let rel_path = format!(".deepseek/pastes/{filename}");
+        let rel_path = format!(".codewhale/pastes/{filename}");
 
-        let pastes_dir = self.workspace.join(".deepseek/pastes");
+        let pastes_dir = self.workspace.join(".codewhale/pastes");
         if let Err(e) = std::fs::create_dir_all(&pastes_dir) {
             // Fallback: keep a truncated version so we don't lose the
             // user's input entirely when the filesystem is unhappy.
@@ -5954,7 +5954,7 @@ mod tests {
 
         assert_eq!(app.input, full_content);
         assert_eq!(app.cursor_position, app.input.chars().count());
-        let pastes_dir = tmp.path().join(".deepseek/pastes");
+        let pastes_dir = tmp.path().join(".codewhale/pastes");
         assert!(
             !pastes_dir.exists() || std::fs::read_dir(&pastes_dir).unwrap().next().is_none(),
             "paste file should not be written before submit"
@@ -5968,7 +5968,7 @@ mod tests {
 
         let submitted = app.submit_input().expect("expected submitted input");
         assert!(
-            submitted.starts_with("@.deepseek/pastes/paste-") && submitted.ends_with(".md"),
+            submitted.starts_with("@.codewhale/pastes/paste-") && submitted.ends_with(".md"),
             "expected @mention after submit, got: {submitted}"
         );
         let rel_path = &submitted[1..];
@@ -5997,9 +5997,9 @@ mod tests {
         app.insert_paste_text(&small);
 
         assert_eq!(app.input, small);
-        assert!(!app.input.starts_with("@.deepseek/pastes/"));
+        assert!(!app.input.starts_with("@.codewhale/pastes/"));
         // No paste file gets written for under-cap pastes.
-        let pastes_dir = tmp.path().join(".deepseek/pastes");
+        let pastes_dir = tmp.path().join(".codewhale/pastes");
         assert!(
             !pastes_dir.exists() || std::fs::read_dir(&pastes_dir).unwrap().next().is_none(),
             "no paste file should be written for under-cap content"
@@ -6021,7 +6021,7 @@ mod tests {
         // The submitted text should be the @mention, not the truncated
         // original (#553).
         assert!(
-            submitted.starts_with("@.deepseek/pastes/paste-"),
+            submitted.starts_with("@.codewhale/pastes/paste-"),
             "expected @mention, got: {submitted}"
         );
         assert!(
