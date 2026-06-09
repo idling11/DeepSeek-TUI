@@ -7168,6 +7168,7 @@ fn render(f: &mut Frame, app: &mut App) {
                 Some("SiliconFlow")
             }
             crate::config::ApiProvider::Arcee => Some("Arcee"),
+            crate::config::ApiProvider::Together => Some("Together"),
             crate::config::ApiProvider::Moonshot => Some("Kimi"),
             crate::config::ApiProvider::Sglang => Some("SGLang"),
             crate::config::ApiProvider::Vllm => Some("vLLM"),
@@ -8208,6 +8209,7 @@ async fn apply_provider_picker_api_key(
             ApiProvider::Fireworks => &mut providers.fireworks,
             ApiProvider::Siliconflow | ApiProvider::SiliconflowCn => &mut providers.siliconflow,
             ApiProvider::Arcee => &mut providers.arcee,
+            ApiProvider::Together => &mut providers.together,
             ApiProvider::Moonshot => &mut providers.moonshot,
             ApiProvider::Sglang => &mut providers.sglang,
             ApiProvider::Vllm => &mut providers.vllm,
@@ -8265,6 +8267,7 @@ fn set_provider_auth_mode_in_memory(config: &mut Config, provider: ApiProvider, 
         ApiProvider::Fireworks => &mut providers.fireworks,
         ApiProvider::Siliconflow | ApiProvider::SiliconflowCn => &mut providers.siliconflow,
         ApiProvider::Arcee => &mut providers.arcee,
+        ApiProvider::Together => &mut providers.together,
         ApiProvider::Moonshot => &mut providers.moonshot,
         ApiProvider::Sglang => &mut providers.sglang,
         ApiProvider::Vllm => &mut providers.vllm,

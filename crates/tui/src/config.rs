@@ -121,6 +121,8 @@ pub const DEFAULT_ARCEE_MODEL: &str = "trinity-large-thinking";
 pub const ARCEE_TRINITY_LARGE_PREVIEW_MODEL: &str = "trinity-large-preview";
 pub const ARCEE_TRINITY_MINI_MODEL: &str = "trinity-mini";
 pub const DEFAULT_ARCEE_BASE_URL: &str = "https://api.arcee.ai/api/v1";
+const DEFAULT_TOGETHER_BASE_URL: &str = "https://api.together.xyz/v1";
+const DEFAULT_TOGETHER_MODEL: &str = "deepseek-ai/DeepSeek-V4-Pro";
 pub const DEFAULT_MOONSHOT_MODEL: &str = "kimi-k2.6";
 pub const DEFAULT_MOONSHOT_BASE_URL: &str = "https://api.moonshot.ai/v1";
 pub const DEFAULT_KIMI_CODE_MODEL: &str = "kimi-for-coding";
@@ -171,6 +173,7 @@ pub enum ApiProvider {
     Siliconflow,
     SiliconflowCn,
     Arcee,
+    Together,
     Moonshot,
     Sglang,
     Vllm,
@@ -219,6 +222,7 @@ impl ApiProvider {
                 Some(Self::SiliconflowCn)
             }
             "arcee" | "arcee-ai" | "arcee_ai" => Some(Self::Arcee),
+            "together" | "together-ai" | "together_ai" => Some(Self::Together),
             "moonshot" | "moonshot-ai" | "kimi" | "kimi-k2" => Some(Self::Moonshot),
             "sglang" | "sg-lang" => Some(Self::Sglang),
             "vllm" | "v-llm" => Some(Self::Vllm),
@@ -245,6 +249,7 @@ impl ApiProvider {
             Self::Siliconflow => "siliconflow",
             Self::SiliconflowCn => "siliconflow-CN",
             Self::Arcee => "arcee",
+            Self::Together => "together",
             Self::Moonshot => "moonshot",
             Self::Sglang => "sglang",
             Self::Vllm => "vllm",
@@ -271,6 +276,7 @@ impl ApiProvider {
             Self::Siliconflow => "SiliconFlow",
             Self::SiliconflowCn => "SiliconFlow (China)",
             Self::Arcee => "Arcee AI",
+            Self::Together => "Together AI",
             Self::Moonshot => "Moonshot/Kimi",
             Self::Sglang => "SGLang",
             Self::Vllm => "vLLM",
@@ -790,6 +796,7 @@ pub fn model_completion_names_for_provider(provider: ApiProvider) -> Vec<&'stati
             vec![DEFAULT_SILICONFLOW_MODEL, DEFAULT_SILICONFLOW_FLASH_MODEL]
         }
         ApiProvider::Arcee => vec![DEFAULT_ARCEE_MODEL, ARCEE_TRINITY_LARGE_PREVIEW_MODEL],
+        ApiProvider::Together => vec![DEFAULT_TOGETHER_MODEL],
         ApiProvider::Moonshot => vec![DEFAULT_MOONSHOT_MODEL],
         ApiProvider::Huggingface => {
             vec![DEFAULT_HUGGINGFACE_MODEL, DEFAULT_HUGGINGFACE_FLASH_MODEL]
@@ -1930,6 +1937,8 @@ pub struct ProvidersConfig {
     #[serde(default)]
     pub arcee: ProviderConfig,
     #[serde(default)]
+    pub together: ProviderConfig,
+    #[serde(default)]
     pub moonshot: ProviderConfig,
     #[serde(default)]
     pub sglang: ProviderConfig,
@@ -2095,6 +2104,7 @@ impl Config {
             ApiProvider::Fireworks => "providers.fireworks",
             ApiProvider::Siliconflow | ApiProvider::SiliconflowCn => "providers.siliconflow",
             ApiProvider::Arcee => "providers.arcee",
+            ApiProvider::Together => "providers.together",
             ApiProvider::Moonshot => "providers.moonshot",
             ApiProvider::Sglang => "providers.sglang",
             ApiProvider::Vllm => "providers.vllm",
@@ -2243,6 +2253,7 @@ impl Config {
             ApiProvider::Fireworks => &providers.fireworks,
             ApiProvider::Siliconflow | ApiProvider::SiliconflowCn => &providers.siliconflow,
             ApiProvider::Arcee => &providers.arcee,
+            ApiProvider::Together => &providers.together,
             ApiProvider::Moonshot => &providers.moonshot,
             ApiProvider::Sglang => &providers.sglang,
             ApiProvider::Vllm => &providers.vllm,
@@ -2267,6 +2278,7 @@ impl Config {
             ApiProvider::Fireworks => &mut providers.fireworks,
             ApiProvider::Siliconflow | ApiProvider::SiliconflowCn => &mut providers.siliconflow,
             ApiProvider::Arcee => &mut providers.arcee,
+            ApiProvider::Together => &mut providers.together,
             ApiProvider::Moonshot => &mut providers.moonshot,
             ApiProvider::Sglang => &mut providers.sglang,
             ApiProvider::Vllm => &mut providers.vllm,
@@ -2378,6 +2390,7 @@ impl Config {
             ApiProvider::Fireworks => DEFAULT_FIREWORKS_MODEL,
             ApiProvider::Siliconflow | ApiProvider::SiliconflowCn => DEFAULT_SILICONFLOW_MODEL,
             ApiProvider::Arcee => DEFAULT_ARCEE_MODEL,
+            ApiProvider::Together => DEFAULT_TOGETHER_MODEL,
             ApiProvider::Moonshot => DEFAULT_MOONSHOT_MODEL,
             ApiProvider::Sglang => DEFAULT_SGLANG_MODEL,
             ApiProvider::Vllm => DEFAULT_VLLM_MODEL,
@@ -2416,6 +2429,7 @@ impl Config {
             | ApiProvider::Siliconflow
             | ApiProvider::SiliconflowCn
             | ApiProvider::Arcee
+            | ApiProvider::Together
             | ApiProvider::Moonshot
             | ApiProvider::Sglang
             | ApiProvider::Vllm
@@ -2451,6 +2465,7 @@ impl Config {
                     ApiProvider::Siliconflow => DEFAULT_SILICONFLOW_BASE_URL,
                     ApiProvider::SiliconflowCn => DEFAULT_SILICONFLOW_CN_BASE_URL,
                     ApiProvider::Arcee => DEFAULT_ARCEE_BASE_URL,
+                    ApiProvider::Together => DEFAULT_TOGETHER_BASE_URL,
                     ApiProvider::Moonshot => {
                         if self
                             .provider_config()
@@ -2507,6 +2522,7 @@ impl Config {
             ApiProvider::Siliconflow => "siliconflow",
             ApiProvider::SiliconflowCn => "siliconflow",
             ApiProvider::Arcee => "arcee",
+            ApiProvider::Together => "together",
             ApiProvider::Moonshot => "moonshot",
             ApiProvider::Sglang => "sglang",
             ApiProvider::Vllm => "vllm",
@@ -2637,6 +2653,10 @@ impl Config {
             ApiProvider::Siliconflow | ApiProvider::SiliconflowCn => anyhow::bail!(
                 "SiliconFlow API key not found. Run 'codewhale auth set --provider siliconflow', \
                  set SILICONFLOW_API_KEY, or add [providers.siliconflow] api_key in ~/.codewhale/config.toml."
+            ),
+            ApiProvider::Together => anyhow::bail!(
+                "Together AI API key not found. Run 'codewhale auth set --provider together', \
+                 set TOGETHER_API_KEY, or add [providers.together] api_key in ~/.codewhale/config.toml."
             ),
             ApiProvider::Arcee => anyhow::bail!(
                 "Arcee AI API key not found. Run 'codewhale auth set --provider arcee', \
@@ -3402,6 +3422,13 @@ fn apply_env_overrides(config: &mut Config) {
                     .arcee
                     .base_url = Some(value);
             }
+            ApiProvider::Together => {
+                config
+                    .providers
+                    .get_or_insert_with(ProvidersConfig::default)
+                    .together
+                    .base_url = Some(value);
+            }
             ApiProvider::Moonshot => {
                 config
                     .providers
@@ -3651,6 +3678,7 @@ fn apply_env_overrides(config: &mut Config) {
             ApiProvider::Fireworks => &mut providers.fireworks,
             ApiProvider::Siliconflow | ApiProvider::SiliconflowCn => &mut providers.siliconflow,
             ApiProvider::Arcee => &mut providers.arcee,
+            ApiProvider::Together => &mut providers.together,
             ApiProvider::Moonshot => &mut providers.moonshot,
             ApiProvider::Sglang => &mut providers.sglang,
             ApiProvider::Vllm => &mut providers.vllm,
@@ -3845,6 +3873,7 @@ fn apply_env_overrides(config: &mut Config) {
                 ApiProvider::Fireworks => &mut providers.fireworks,
                 ApiProvider::Siliconflow | ApiProvider::SiliconflowCn => &mut providers.siliconflow,
                 ApiProvider::Arcee => &mut providers.arcee,
+                ApiProvider::Together => &mut providers.together,
                 ApiProvider::Moonshot => &mut providers.moonshot,
                 ApiProvider::Sglang => &mut providers.sglang,
                 ApiProvider::Vllm => &mut providers.vllm,
@@ -4167,6 +4196,7 @@ fn default_base_url_for_provider(provider: ApiProvider) -> &'static str {
         ApiProvider::Siliconflow => DEFAULT_SILICONFLOW_BASE_URL,
         ApiProvider::SiliconflowCn => DEFAULT_SILICONFLOW_CN_BASE_URL,
         ApiProvider::Arcee => DEFAULT_ARCEE_BASE_URL,
+        ApiProvider::Together => DEFAULT_TOGETHER_BASE_URL,
         ApiProvider::Moonshot => DEFAULT_MOONSHOT_BASE_URL,
         ApiProvider::Sglang => DEFAULT_SGLANG_BASE_URL,
         ApiProvider::Vllm => DEFAULT_VLLM_BASE_URL,
@@ -4588,6 +4618,7 @@ fn merge_providers(
             fireworks: merge_provider_config(base.fireworks, override_cfg.fireworks),
             siliconflow: merge_provider_config(base.siliconflow, override_cfg.siliconflow),
             arcee: merge_provider_config(base.arcee, override_cfg.arcee),
+            together: merge_provider_config(base.together, override_cfg.together),
             moonshot: merge_provider_config(base.moonshot, override_cfg.moonshot),
             sglang: merge_provider_config(base.sglang, override_cfg.sglang),
             vllm: merge_provider_config(base.vllm, override_cfg.vllm),
@@ -5064,6 +5095,9 @@ pub fn active_provider_has_env_api_key(config: &Config) -> bool {
             std::env::var("SILICONFLOW_API_KEY").is_ok_and(|k| !k.trim().is_empty())
         }
         ApiProvider::Arcee => std::env::var("ARCEE_API_KEY").is_ok_and(|k| !k.trim().is_empty()),
+        ApiProvider::Together => {
+            std::env::var("TOGETHER_API_KEY").is_ok_and(|k| !k.trim().is_empty())
+        }
         ApiProvider::Huggingface => {
             std::env::var("HUGGINGFACE_API_KEY").is_ok_and(|k| !k.trim().is_empty())
                 || std::env::var("HF_TOKEN").is_ok_and(|k| !k.trim().is_empty())
@@ -5105,6 +5139,7 @@ pub fn has_api_key_for(config: &Config, provider: ApiProvider) -> bool {
         ApiProvider::Fireworks => "FIREWORKS_API_KEY",
         ApiProvider::Siliconflow | ApiProvider::SiliconflowCn => "SILICONFLOW_API_KEY",
         ApiProvider::Arcee => "ARCEE_API_KEY",
+        ApiProvider::Together => "TOGETHER_API_KEY",
         ApiProvider::Huggingface => "HUGGINGFACE_API_KEY",
         ApiProvider::Moonshot => "MOONSHOT_API_KEY",
         ApiProvider::Sglang => "SGLANG_API_KEY",
@@ -5221,6 +5256,7 @@ pub fn save_api_key_for(provider: ApiProvider, api_key: &str) -> Result<PathBuf>
         ApiProvider::Fireworks => "providers.fireworks",
         ApiProvider::Siliconflow | ApiProvider::SiliconflowCn => "providers.siliconflow",
         ApiProvider::Arcee => "providers.arcee",
+        ApiProvider::Together => "providers.together",
         ApiProvider::Huggingface => "providers.huggingface",
         ApiProvider::Moonshot => "providers.moonshot",
         ApiProvider::Sglang => "providers.sglang",
@@ -5264,6 +5300,7 @@ pub fn save_api_key_for(provider: ApiProvider, api_key: &str) -> Result<PathBuf>
         ApiProvider::Siliconflow => "siliconflow",
         ApiProvider::SiliconflowCn => "siliconflow",
         ApiProvider::Arcee => "arcee",
+        ApiProvider::Together => "together",
         ApiProvider::Huggingface => "huggingface",
         ApiProvider::Moonshot => "moonshot",
         ApiProvider::Sglang => "sglang",
@@ -5360,6 +5397,7 @@ fn provider_config_key(provider: ApiProvider) -> Result<&'static str> {
         ApiProvider::Siliconflow => Ok("siliconflow"),
         ApiProvider::SiliconflowCn => Ok("siliconflow"),
         ApiProvider::Arcee => Ok("arcee"),
+        ApiProvider::Together => Ok("together"),
         ApiProvider::Huggingface => Ok("huggingface"),
         ApiProvider::Moonshot => Ok("moonshot"),
         ApiProvider::Sglang => Ok("sglang"),

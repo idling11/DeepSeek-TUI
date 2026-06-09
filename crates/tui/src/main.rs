@@ -2021,6 +2021,10 @@ fn run_setup_status(config: &Config, workspace: &Path) -> Result<()> {
                     "ARCEE_API_KEY",
                     "codewhale auth set --provider arcee --api-key \"...\"",
                 ),
+                crate::config::ApiProvider::Together => (
+                    "TOGETHER_API_KEY",
+                    "codewhale auth set --provider together --api-key \"...\"",
+                ),
                 crate::config::ApiProvider::Moonshot => (
                     "MOONSHOT_API_KEY/KIMI_API_KEY",
                     "codewhale auth set --provider moonshot --api-key \"...\"",
@@ -2064,6 +2068,7 @@ fn run_setup_status(config: &Config, workspace: &Path) -> Result<()> {
                     crate::config::ApiProvider::Siliconflow
                     | crate::config::ApiProvider::SiliconflowCn => "siliconflow",
                     crate::config::ApiProvider::Arcee => "arcee",
+                    crate::config::ApiProvider::Together => "together",
                     crate::config::ApiProvider::Moonshot => "moonshot",
                     crate::config::ApiProvider::Sglang => "sglang",
                     crate::config::ApiProvider::Vllm => "vllm",

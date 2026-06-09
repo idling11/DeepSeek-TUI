@@ -14,9 +14,10 @@ use super::{
     DEFAULT_OPENAI_BASE_URL, DEFAULT_OPENAI_MODEL, DEFAULT_OPENROUTER_BASE_URL,
     DEFAULT_OPENROUTER_MODEL, DEFAULT_SGLANG_BASE_URL, DEFAULT_SGLANG_MODEL,
     DEFAULT_SILICONFLOW_BASE_URL, DEFAULT_SILICONFLOW_CN_BASE_URL, DEFAULT_SILICONFLOW_MODEL,
-    DEFAULT_VLLM_BASE_URL, DEFAULT_VLLM_MODEL, DEFAULT_VOLCENGINE_BASE_URL,
-    DEFAULT_VOLCENGINE_MODEL, DEFAULT_WANJIE_ARK_BASE_URL, DEFAULT_WANJIE_ARK_MODEL,
-    DEFAULT_XIAOMI_MIMO_BASE_URL, DEFAULT_XIAOMI_MIMO_MODEL, ProviderKind,
+    DEFAULT_TOGETHER_BASE_URL, DEFAULT_TOGETHER_MODEL, DEFAULT_VLLM_BASE_URL, DEFAULT_VLLM_MODEL,
+    DEFAULT_VOLCENGINE_BASE_URL, DEFAULT_VOLCENGINE_MODEL, DEFAULT_WANJIE_ARK_BASE_URL,
+    DEFAULT_WANJIE_ARK_MODEL, DEFAULT_XIAOMI_MIMO_BASE_URL, DEFAULT_XIAOMI_MIMO_MODEL,
+    ProviderKind,
 };
 
 /// Wire protocol spoken by a provider.
@@ -230,6 +231,15 @@ provider!(
     "arcee"
 );
 provider!(
+    Together,
+    Together,
+    "Together",
+    DEFAULT_TOGETHER_BASE_URL,
+    DEFAULT_TOGETHER_MODEL,
+    ["TOGETHER_API_KEY"],
+    "together"
+);
+provider!(
     Moonshot,
     Moonshot,
     "Moonshot",
@@ -288,13 +298,14 @@ static FIREWORKS: Fireworks = Fireworks;
 static SILICONFLOW: Siliconflow = Siliconflow;
 static SILICONFLOW_CN: SiliconflowCN = SiliconflowCN;
 static ARCEE: Arcee = Arcee;
+static TOGETHER: Together = Together;
 static MOONSHOT: Moonshot = Moonshot;
 static SGLANG: Sglang = Sglang;
 static VLLM: Vllm = Vllm;
 static OLLAMA: Ollama = Ollama;
 static HUGGINGFACE: Huggingface = Huggingface;
 
-static PROVIDER_REGISTRY: [&dyn Provider; 18] = [
+static PROVIDER_REGISTRY: [&dyn Provider; 19] = [
     &DEEPSEEK,
     &NVIDIA_NIM,
     &OPENAI,
@@ -308,6 +319,7 @@ static PROVIDER_REGISTRY: [&dyn Provider; 18] = [
     &SILICONFLOW,
     &SILICONFLOW_CN,
     &ARCEE,
+    &TOGETHER,
     &MOONSHOT,
     &SGLANG,
     &VLLM,
@@ -354,6 +366,7 @@ pub fn provider_for_kind(kind: ProviderKind) -> &'static dyn Provider {
         ProviderKind::Siliconflow => &SILICONFLOW,
         ProviderKind::SiliconflowCN => &SILICONFLOW_CN,
         ProviderKind::Arcee => &ARCEE,
+        ProviderKind::Together => &TOGETHER,
         ProviderKind::Moonshot => &MOONSHOT,
         ProviderKind::Sglang => &SGLANG,
         ProviderKind::Vllm => &VLLM,

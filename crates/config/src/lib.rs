@@ -82,6 +82,8 @@ const DEFAULT_FIREWORKS_BASE_URL: &str = "https://api.fireworks.ai/inference/v1"
 const DEFAULT_SILICONFLOW_BASE_URL: &str = "https://api.siliconflow.com/v1";
 const DEFAULT_SILICONFLOW_CN_BASE_URL: &str = "https://api.siliconflow.cn/v1";
 const DEFAULT_ARCEE_BASE_URL: &str = "https://api.arcee.ai/api/v1";
+const DEFAULT_TOGETHER_MODEL: &str = "deepseek-ai/DeepSeek-V4-Pro";
+const DEFAULT_TOGETHER_BASE_URL: &str = "https://api.together.xyz/v1";
 const DEFAULT_HUGGINGFACE_MODEL: &str = "deepseek-ai/DeepSeek-V4-Pro";
 const DEFAULT_HUGGINGFACE_FLASH_MODEL: &str = "deepseek-ai/DeepSeek-V4-Flash";
 const DEFAULT_HUGGINGFACE_BASE_URL: &str = "https://router.huggingface.co/v1";
@@ -127,6 +129,8 @@ pub enum ProviderKind {
     Siliconflow,
     #[serde(alias = "arcee-ai", alias = "arcee_ai")]
     Arcee,
+    #[serde(alias = "together-ai", alias = "together_ai")]
+    Together,
     #[serde(alias = "siliconflow-cn", alias = "siliconflow-CN")]
     SiliconflowCN,
     Moonshot,
@@ -138,7 +142,7 @@ pub enum ProviderKind {
 }
 
 impl ProviderKind {
-    pub const ALL: [Self; 18] = [
+    pub const ALL: [Self; 19] = [
         Self::Deepseek,
         Self::NvidiaNim,
         Self::Openai,
@@ -152,6 +156,7 @@ impl ProviderKind {
         Self::Siliconflow,
         Self::SiliconflowCN,
         Self::Arcee,
+        Self::Together,
         Self::Moonshot,
         Self::Sglang,
         Self::Vllm,
@@ -175,6 +180,7 @@ impl ProviderKind {
             Self::Siliconflow => "siliconflow",
             Self::SiliconflowCN => "siliconflow-CN",
             Self::Arcee => "arcee",
+            Self::Together => "together",
             Self::Moonshot => "moonshot",
             Self::Sglang => "sglang",
             Self::Vllm => "vllm",
@@ -204,6 +210,7 @@ impl ProviderKind {
             "siliconflow" | "silicon-flow" | "silicon_flow" => Some(Self::Siliconflow),
             "siliconflow-cn" | "siliconflow-CN" => Some(Self::SiliconflowCN),
             "arcee" | "arcee-ai" | "arcee_ai" => Some(Self::Arcee),
+            "together" | "together-ai" | "together_ai" => Some(Self::Together),
             "moonshot" | "moonshot-ai" | "kimi" | "kimi-k2" => Some(Self::Moonshot),
             "sglang" | "sg-lang" => Some(Self::Sglang),
             "vllm" | "v-llm" => Some(Self::Vllm),
@@ -268,6 +275,8 @@ pub struct ProvidersToml {
     #[serde(default)]
     pub arcee: ProviderConfigToml,
     #[serde(default)]
+    pub together: ProviderConfigToml,
+    #[serde(default)]
     pub moonshot: ProviderConfigToml,
     #[serde(default)]
     pub sglang: ProviderConfigToml,
@@ -319,6 +328,7 @@ impl ProvidersToml {
             ProviderKind::Fireworks => &self.fireworks,
             ProviderKind::Siliconflow | ProviderKind::SiliconflowCN => &self.siliconflow,
             ProviderKind::Arcee => &self.arcee,
+            ProviderKind::Together => &self.together,
             ProviderKind::Moonshot => &self.moonshot,
             ProviderKind::Sglang => &self.sglang,
             ProviderKind::Vllm => &self.vllm,
@@ -341,6 +351,7 @@ impl ProvidersToml {
             ProviderKind::Fireworks => &mut self.fireworks,
             ProviderKind::Siliconflow | ProviderKind::SiliconflowCN => &mut self.siliconflow,
             ProviderKind::Arcee => &mut self.arcee,
+            ProviderKind::Together => &mut self.together,
             ProviderKind::Moonshot => &mut self.moonshot,
             ProviderKind::Sglang => &mut self.sglang,
             ProviderKind::Vllm => &mut self.vllm,
@@ -1948,6 +1959,7 @@ impl ConfigToml {
                 ProviderKind::Siliconflow => DEFAULT_SILICONFLOW_BASE_URL.to_string(),
                 ProviderKind::SiliconflowCN => DEFAULT_SILICONFLOW_CN_BASE_URL.to_string(),
                 ProviderKind::Arcee => DEFAULT_ARCEE_BASE_URL.to_string(),
+                ProviderKind::Together => DEFAULT_TOGETHER_BASE_URL.to_string(),
                 ProviderKind::Moonshot => {
                     if auth_mode.as_deref().is_some_and(auth_mode_uses_kimi_oauth) {
                         DEFAULT_KIMI_CODE_BASE_URL.to_string()
@@ -2373,6 +2385,7 @@ fn default_model_for_provider(provider: ProviderKind) -> &'static str {
         ProviderKind::Fireworks => DEFAULT_FIREWORKS_MODEL,
         ProviderKind::Siliconflow | ProviderKind::SiliconflowCN => DEFAULT_SILICONFLOW_MODEL,
         ProviderKind::Arcee => DEFAULT_ARCEE_MODEL,
+        ProviderKind::Together => DEFAULT_TOGETHER_MODEL,
         ProviderKind::Moonshot => DEFAULT_MOONSHOT_MODEL,
         ProviderKind::Sglang => DEFAULT_SGLANG_MODEL,
         ProviderKind::Vllm => DEFAULT_VLLM_MODEL,
@@ -2396,6 +2409,7 @@ fn default_base_url_for_provider(provider: ProviderKind) -> &'static str {
         ProviderKind::Siliconflow => DEFAULT_SILICONFLOW_BASE_URL,
         ProviderKind::SiliconflowCN => DEFAULT_SILICONFLOW_CN_BASE_URL,
         ProviderKind::Arcee => DEFAULT_ARCEE_BASE_URL,
+        ProviderKind::Together => DEFAULT_TOGETHER_BASE_URL,
         ProviderKind::Moonshot => DEFAULT_MOONSHOT_BASE_URL,
         ProviderKind::Sglang => DEFAULT_SGLANG_BASE_URL,
         ProviderKind::Vllm => DEFAULT_VLLM_BASE_URL,
@@ -3122,6 +3136,7 @@ struct EnvRuntimeOverrides {
     novita_model: Option<String>,
     fireworks_model: Option<String>,
     arcee_model: Option<String>,
+    together_model: Option<String>,
     output_mode: Option<String>,
     auth_mode: Option<String>,
     log_level: Option<String>,
@@ -3143,6 +3158,7 @@ struct EnvRuntimeOverrides {
     siliconflow_base_url: Option<String>,
     siliconflow_model: Option<String>,
     arcee_base_url: Option<String>,
+    together_base_url: Option<String>,
     moonshot_base_url: Option<String>,
     sglang_base_url: Option<String>,
     vllm_base_url: Option<String>,
@@ -3195,6 +3211,9 @@ impl EnvRuntimeOverrides {
                 .ok()
                 .filter(|v| !v.trim().is_empty()),
             arcee_model: std::env::var("ARCEE_MODEL")
+                .ok()
+                .filter(|v| !v.trim().is_empty()),
+            together_model: std::env::var("TOGETHER_MODEL")
                 .ok()
                 .filter(|v| !v.trim().is_empty()),
             output_mode: std::env::var("DEEPSEEK_OUTPUT_MODE").ok(),
@@ -3277,6 +3296,9 @@ impl EnvRuntimeOverrides {
             arcee_base_url: std::env::var("ARCEE_BASE_URL")
                 .ok()
                 .filter(|v| !v.trim().is_empty()),
+            together_base_url: std::env::var("TOGETHER_BASE_URL")
+                .ok()
+                .filter(|v| !v.trim().is_empty()),
             moonshot_base_url: std::env::var("MOONSHOT_BASE_URL")
                 .or_else(|_| std::env::var("KIMI_BASE_URL"))
                 .ok()
@@ -3319,6 +3341,7 @@ impl EnvRuntimeOverrides {
                 self.siliconflow_base_url.clone()
             }
             ProviderKind::Arcee => self.arcee_base_url.clone(),
+            ProviderKind::Together => self.together_base_url.clone(),
             ProviderKind::Moonshot => self.moonshot_base_url.clone(),
             ProviderKind::Sglang => self.sglang_base_url.clone(),
             ProviderKind::Vllm => self.vllm_base_url.clone(),
@@ -3336,6 +3359,7 @@ impl EnvRuntimeOverrides {
                 self.siliconflow_model.clone()
             }
             ProviderKind::Arcee => self.arcee_model.clone(),
+            ProviderKind::Together => self.together_model.clone(),
             ProviderKind::Moonshot => self.moonshot_model.clone(),
             ProviderKind::XiaomiMimo => self.xiaomi_mimo_model.clone(),
             ProviderKind::Novita => self.novita_model.clone(),
@@ -3731,6 +3755,9 @@ action = "mode.agent"
         arcee_api_key: Option<OsString>,
         arcee_base_url: Option<OsString>,
         arcee_model: Option<OsString>,
+        together_api_key: Option<OsString>,
+        together_base_url: Option<OsString>,
+        together_model: Option<OsString>,
         moonshot_api_key: Option<OsString>,
         moonshot_base_url: Option<OsString>,
         moonshot_model: Option<OsString>,
@@ -3808,6 +3835,9 @@ action = "mode.agent"
                 arcee_api_key: env::var_os("ARCEE_API_KEY"),
                 arcee_base_url: env::var_os("ARCEE_BASE_URL"),
                 arcee_model: env::var_os("ARCEE_MODEL"),
+                together_api_key: env::var_os("TOGETHER_API_KEY"),
+                together_base_url: env::var_os("TOGETHER_BASE_URL"),
+                together_model: env::var_os("TOGETHER_MODEL"),
                 moonshot_api_key: env::var_os("MOONSHOT_API_KEY"),
                 moonshot_base_url: env::var_os("MOONSHOT_BASE_URL"),
                 moonshot_model: env::var_os("MOONSHOT_MODEL"),
@@ -3880,6 +3910,9 @@ action = "mode.agent"
                 env::remove_var("ARCEE_API_KEY");
                 env::remove_var("ARCEE_BASE_URL");
                 env::remove_var("ARCEE_MODEL");
+                env::remove_var("TOGETHER_API_KEY");
+                env::remove_var("TOGETHER_BASE_URL");
+                env::remove_var("TOGETHER_MODEL");
                 env::remove_var("MOONSHOT_API_KEY");
                 env::remove_var("MOONSHOT_BASE_URL");
                 env::remove_var("MOONSHOT_MODEL");
@@ -3978,6 +4011,9 @@ action = "mode.agent"
                 Self::restore_var("ARCEE_API_KEY", self.arcee_api_key.take());
                 Self::restore_var("ARCEE_BASE_URL", self.arcee_base_url.take());
                 Self::restore_var("ARCEE_MODEL", self.arcee_model.take());
+                Self::restore_var("TOGETHER_API_KEY", self.together_api_key.take());
+                Self::restore_var("TOGETHER_BASE_URL", self.together_base_url.take());
+                Self::restore_var("TOGETHER_MODEL", self.together_model.take());
                 Self::restore_var("MOONSHOT_API_KEY", self.moonshot_api_key.take());
                 Self::restore_var("MOONSHOT_BASE_URL", self.moonshot_base_url.take());
                 Self::restore_var("MOONSHOT_MODEL", self.moonshot_model.take());
@@ -5790,6 +5826,66 @@ mode = "token-plan-usa"
         assert_eq!(resolved.api_key.as_deref(), Some("arcee-file-key"));
         assert_eq!(resolved.base_url, DEFAULT_ARCEE_BASE_URL);
         assert_eq!(resolved.model, ARCEE_TRINITY_LARGE_PREVIEW_MODEL);
+    }
+
+    #[test]
+    fn together_provider_defaults_to_direct_api_endpoint_and_model() {
+        let _lock = env_lock();
+        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let config = ConfigToml {
+            provider: ProviderKind::Together,
+            ..ConfigToml::default()
+        };
+
+        let resolved = config.resolve_runtime_options(&CliRuntimeOverrides::default());
+
+        assert_eq!(resolved.provider, ProviderKind::Together);
+        assert_eq!(resolved.base_url, DEFAULT_TOGETHER_BASE_URL);
+        assert_eq!(resolved.model, DEFAULT_TOGETHER_MODEL);
+    }
+
+    #[test]
+    fn together_env_overrides_key_base_url_and_model() {
+        let _lock = env_lock();
+        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        // Safety: test-only environment mutation guarded by a module mutex.
+        unsafe {
+            env::set_var("CODEWHALE_PROVIDER", "together");
+            env::set_var("TOGETHER_API_KEY", "together-env-key");
+            env::set_var(
+                "TOGETHER_BASE_URL",
+                "https://together-mirror.example/api/v1",
+            );
+            env::set_var("TOGETHER_MODEL", "meta-llama/Llama-4");
+        }
+
+        let resolved =
+            ConfigToml::default().resolve_runtime_options(&CliRuntimeOverrides::default());
+
+        assert_eq!(resolved.provider, ProviderKind::Together);
+        assert_eq!(resolved.api_key.as_deref(), Some("together-env-key"));
+        assert_eq!(resolved.base_url, "https://together-mirror.example/api/v1");
+        assert_eq!(resolved.model, "meta-llama/Llama-4");
+    }
+
+    #[test]
+    fn together_provider_config_overrides_runtime_defaults() {
+        let _lock = env_lock();
+        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let mut config = ConfigToml {
+            provider: ProviderKind::Together,
+            ..ConfigToml::default()
+        };
+        config.providers.together.api_key = Some("together-file-key".to_string());
+        config.providers.together.base_url = Some(DEFAULT_TOGETHER_BASE_URL.to_string());
+        config.providers.together.model = Some("meta-llama/Llama-4".to_string());
+
+        let resolved = config.resolve_runtime_options(&CliRuntimeOverrides::default());
+
+        assert_eq!(resolved.provider, ProviderKind::Together);
+        assert_eq!(resolved.api_key.as_deref(), Some("together-file-key"));
+        assert_eq!(resolved.base_url, DEFAULT_TOGETHER_BASE_URL);
+        assert_eq!(resolved.model, "meta-llama/Llama-4");
     }
 
     #[test]

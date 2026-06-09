@@ -378,6 +378,12 @@ max_subagents = 10 # optional (1-20)
 # base_url = "https://api.siliconflow.com/v1"
 # model = "deepseek-ai/DeepSeek-V4-Pro"     # or deepseek-ai/DeepSeek-V4-Flash
 
+# Together AI direct OpenAI-compatible endpoint (https://api.together.xyz)
+[providers.together]
+# api_key = "YOUR_TOGETHER_API_KEY"
+# base_url = "https://api.together.xyz/v1"
+# model = "deepseek-ai/DeepSeek-V4-Pro"
+
 # Arcee AI direct OpenAI-compatible endpoint (https://docs.arcee.ai)
 [providers.arcee]
 # api_key = "YOUR_ARCEE_API_KEY"

@@ -749,6 +749,7 @@ pub fn env_for(name: &str) -> Option<String> {
         "siliconflow" | "silicon-flow" | "silicon_flow" | "siliconflow-cn" | "siliconflow_cn"
         | "silicon-flow-cn" | "silicon_flow_cn" | "siliconflow-china" => &["SILICONFLOW_API_KEY"],
         "arcee" | "arcee-ai" | "arcee_ai" => &["ARCEE_API_KEY"],
+        "together" | "together-ai" | "together_ai" => &["TOGETHER_API_KEY"],
         "moonshot" | "moonshot-ai" | "kimi" | "kimi-k2" => &["MOONSHOT_API_KEY", "KIMI_API_KEY"],
         "sglang" | "sg-lang" => &["SGLANG_API_KEY"],
         "vllm" | "v-llm" => &["VLLM_API_KEY"],

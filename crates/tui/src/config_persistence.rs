@@ -213,6 +213,7 @@ fn provider_base_url_table_key(provider: ApiProvider) -> anyhow::Result<&'static
         ApiProvider::Fireworks => Ok("fireworks"),
         ApiProvider::Siliconflow | ApiProvider::SiliconflowCn => Ok("siliconflow"),
         ApiProvider::Arcee => Ok("arcee"),
+        ApiProvider::Together => Ok("together"),
         ApiProvider::Huggingface => Ok("huggingface"),
         ApiProvider::Moonshot => Ok("moonshot"),
         ApiProvider::Sglang => Ok("sglang"),

@@ -1203,6 +1203,7 @@ pub(super) fn apply_reasoning_effort(
             | ApiProvider::Novita
             | ApiProvider::Siliconflow
             | ApiProvider::SiliconflowCn
+            | ApiProvider::Together
             | ApiProvider::Sglang
             | ApiProvider::Volcengine => {
                 body["thinking"] = json!({ "type": "disabled" });
@@ -1241,6 +1242,7 @@ pub(super) fn apply_reasoning_effort(
             | ApiProvider::DeepseekCN
             | ApiProvider::Siliconflow
             | ApiProvider::SiliconflowCn
+            | ApiProvider::Together
             | ApiProvider::Sglang
             | ApiProvider::Volcengine => {
                 body["reasoning_effort"] = json!("high");
@@ -1303,6 +1305,7 @@ pub(super) fn apply_reasoning_effort(
             | ApiProvider::DeepseekCN
             | ApiProvider::Siliconflow
             | ApiProvider::SiliconflowCn
+            | ApiProvider::Together
             | ApiProvider::Sglang
             | ApiProvider::Volcengine => {
                 body["reasoning_effort"] = json!("max");
