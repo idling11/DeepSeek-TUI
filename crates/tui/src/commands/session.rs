@@ -226,7 +226,7 @@ pub fn load(app: &mut App, path: Option<&str>) -> CommandResult {
         }
     };
 
-    app.api_messages = session.messages.clone().into();
+    app.api_messages.clone_from(&session.messages);
     app.clear_history();
     let cells_to_add: Vec<_> = app
         .api_messages
