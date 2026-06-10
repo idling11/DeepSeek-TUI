@@ -647,7 +647,10 @@ impl Personality {
 
     fn prompt(self) -> &'static str {
         match self {
-            Self::Calm => CALM_PERSONALITY,
+            // Calm is the default personality; its voice rules are kept
+            // out of the model-prompt path to reduce static token overhead.
+            // The full Calm text remains in calm.md for documentation.
+            Self::Calm => "",
             Self::Playful => PLAYFUL_PERSONALITY,
         }
     }
@@ -2101,7 +2104,8 @@ mod tests {
         // Base layer
         assert!(prompt.contains("You are codewhale"));
         // Personality layer
-        assert!(prompt.contains("Personality: Calm"));
+        // Calm personality layer is excluded by default (#2953)
+        assert!(!prompt.contains("Personality: Calm"));
         // Mode layer
         assert!(prompt.contains("Mode: Agent"));
         // Approval layer
@@ -2159,12 +2163,11 @@ mod tests {
     fn compose_prompt_deterministic_order() {
         let prompt = compose_prompt(AppMode::Yolo, Personality::Calm);
         let base_pos = prompt.find("You are codewhale").unwrap();
-        let personality_pos = prompt.find("Personality: Calm").unwrap();
+        // Calm personality layer is excluded by default (#2953)
         let mode_pos = prompt.find("Mode: YOLO").unwrap();
         let approval_pos = prompt.find("Approval Policy: Auto").unwrap();
 
-        assert!(base_pos < personality_pos);
-        assert!(personality_pos < mode_pos);
+        assert!(base_pos < mode_pos);
         assert!(mode_pos < approval_pos);
     }
 
@@ -2192,9 +2195,10 @@ mod tests {
     fn personality_switches_correctly() {
         let calm = compose_prompt(AppMode::Agent, Personality::Calm);
         let playful = compose_prompt(AppMode::Agent, Personality::Playful);
-        assert!(calm.contains("Personality: Calm"));
-        assert!(playful.contains("Personality: Playful"));
+        // Calm is excluded from the default prompt (#2953)
+        assert!(!calm.contains("Personality: Calm"));
         assert!(!calm.contains("Personality: Playful"));
+        assert!(playful.contains("Personality: Playful"));
     }
 
     #[test]
@@ -2474,10 +2478,10 @@ mod tests {
     #[test]
     fn preamble_rhythm_section_present() {
         let prompt = compose_prompt(AppMode::Agent, Personality::Calm);
-        // Preamble rhythm is now part of the Calm personality overlay.
-        // Verify the load-bearing guidance is still present.
-        assert!(prompt.contains("In preambles, name the action"));
-        assert!(prompt.contains("Reading the module tree"));
+        // Calm personality (including preamble rhythm guidance)
+        // is excluded from the default prompt path (#2953).
+        // The guidance text remains available in calm.md for documentation.
+        assert!(!prompt.contains("In preambles, name the action"));
     }
 
     #[test]
@@ -2786,6 +2790,19 @@ mod tests {
         assert!(
             prompt.contains(&extra.display().to_string()),
             "instructions block must annotate its source path"
+        );
+    }
+
+    #[test]
+    fn default_prompt_does_not_include_calm_personality_overlay() {
+        // The Calm personality prompt should be excluded from the default
+        // composition to reduce static token overhead. (Issue #2953)
+        let prompt = compose_prompt(AppMode::Agent, Personality::Calm);
+        let calm_text = include_str!("prompts/personalities/calm.md");
+        let first_calm_line = calm_text.lines().find(|l| !l.is_empty()).unwrap_or("");
+        assert!(
+            !prompt.contains(first_calm_line),
+            "default agent prompt must not include calm.md overlay"
         );
     }
 }
