@@ -1953,6 +1953,8 @@ pub struct ProvidersConfig {
     pub fireworks: ProviderConfig,
     #[serde(default)]
     pub siliconflow: ProviderConfig,
+    #[serde(default, alias = "siliconflow-CN", alias = "siliconflow-cn")]
+    pub siliconflow_cn: ProviderConfig,
     #[serde(default)]
     pub arcee: ProviderConfig,
     #[serde(default)]
@@ -2273,7 +2275,8 @@ impl Config {
             ApiProvider::XiaomiMimo => &providers.xiaomi_mimo,
             ApiProvider::Novita => &providers.novita,
             ApiProvider::Fireworks => &providers.fireworks,
-            ApiProvider::Siliconflow | ApiProvider::SiliconflowCn => &providers.siliconflow,
+            ApiProvider::Siliconflow => &providers.siliconflow,
+            ApiProvider::SiliconflowCn => &providers.siliconflow_cn,
             ApiProvider::Arcee => &providers.arcee,
             ApiProvider::Moonshot => &providers.moonshot,
             ApiProvider::Sglang => &providers.sglang,
@@ -2299,7 +2302,8 @@ impl Config {
             ApiProvider::XiaomiMimo => &mut providers.xiaomi_mimo,
             ApiProvider::Novita => &mut providers.novita,
             ApiProvider::Fireworks => &mut providers.fireworks,
-            ApiProvider::Siliconflow | ApiProvider::SiliconflowCn => &mut providers.siliconflow,
+            ApiProvider::Siliconflow => &mut providers.siliconflow,
+            ApiProvider::SiliconflowCn => &mut providers.siliconflow_cn,
             ApiProvider::Arcee => &mut providers.arcee,
             ApiProvider::Moonshot => &mut providers.moonshot,
             ApiProvider::Sglang => &mut providers.sglang,
@@ -3754,7 +3758,8 @@ fn apply_env_overrides(config: &mut Config) {
             ApiProvider::XiaomiMimo => &mut providers.xiaomi_mimo,
             ApiProvider::Novita => &mut providers.novita,
             ApiProvider::Fireworks => &mut providers.fireworks,
-            ApiProvider::Siliconflow | ApiProvider::SiliconflowCn => &mut providers.siliconflow,
+            ApiProvider::Siliconflow => &mut providers.siliconflow,
+            ApiProvider::SiliconflowCn => &mut providers.siliconflow_cn,
             ApiProvider::Arcee => &mut providers.arcee,
             ApiProvider::Moonshot => &mut providers.moonshot,
             ApiProvider::Sglang => &mut providers.sglang,
@@ -3950,7 +3955,8 @@ fn apply_env_overrides(config: &mut Config) {
                 ApiProvider::XiaomiMimo => &mut providers.xiaomi_mimo,
                 ApiProvider::Novita => &mut providers.novita,
                 ApiProvider::Fireworks => &mut providers.fireworks,
-                ApiProvider::Siliconflow | ApiProvider::SiliconflowCn => &mut providers.siliconflow,
+                ApiProvider::Siliconflow => &mut providers.siliconflow,
+                ApiProvider::SiliconflowCn => &mut providers.siliconflow_cn,
                 ApiProvider::Arcee => &mut providers.arcee,
                 ApiProvider::Moonshot => &mut providers.moonshot,
                 ApiProvider::Sglang => &mut providers.sglang,
@@ -4698,6 +4704,7 @@ fn merge_providers(
             novita: merge_provider_config(base.novita, override_cfg.novita),
             fireworks: merge_provider_config(base.fireworks, override_cfg.fireworks),
             siliconflow: merge_provider_config(base.siliconflow, override_cfg.siliconflow),
+            siliconflow_cn: merge_provider_config(base.siliconflow_cn, override_cfg.siliconflow_cn),
             arcee: merge_provider_config(base.arcee, override_cfg.arcee),
             moonshot: merge_provider_config(base.moonshot, override_cfg.moonshot),
             sglang: merge_provider_config(base.sglang, override_cfg.sglang),
@@ -5400,7 +5407,7 @@ pub fn save_api_key_for(provider: ApiProvider, api_key: &str) -> Result<PathBuf>
         ApiProvider::Novita => "novita",
         ApiProvider::Fireworks => "fireworks",
         ApiProvider::Siliconflow => "siliconflow",
-        ApiProvider::SiliconflowCn => "siliconflow",
+        ApiProvider::SiliconflowCn => "siliconflow_cn",
         ApiProvider::Arcee => "arcee",
         ApiProvider::Huggingface => "huggingface",
         ApiProvider::Moonshot => "moonshot",
@@ -10396,16 +10403,18 @@ api_key = "moonshot-platform-key"
         assert_eq!(
             parsed
                 .get("providers")
-                .and_then(|p| p.get("siliconflow"))
+                .and_then(|p| p.get("siliconflow_cn"))
                 .and_then(|t| t.get("api_key"))
                 .and_then(toml::Value::as_str),
             Some("sf-cn-saved-key")
         );
-        assert!(
+        assert_eq!(
             parsed
                 .get("providers")
-                .and_then(|p| p.get("siliconflow-CN"))
-                .is_none()
+                .and_then(|p| p.get("siliconflow"))
+                .and_then(|t| t.get("api_key"))
+                .and_then(toml::Value::as_str),
+            Some("sf-saved-key")
         );
         Ok(())
     }

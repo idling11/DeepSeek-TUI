@@ -221,7 +221,7 @@ provider!(
     DEFAULT_SILICONFLOW_CN_BASE_URL,
     DEFAULT_SILICONFLOW_MODEL,
     ["SILICONFLOW_API_KEY"],
-    "siliconflow"
+    "siliconflow_cn"
 );
 provider!(
     Arcee,

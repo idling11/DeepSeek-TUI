@@ -289,6 +289,8 @@ pub struct ProvidersToml {
     pub fireworks: ProviderConfigToml,
     #[serde(default)]
     pub siliconflow: ProviderConfigToml,
+    #[serde(default, alias = "siliconflow-CN", alias = "siliconflow-cn")]
+    pub siliconflow_cn: ProviderConfigToml,
     #[serde(default)]
     pub arcee: ProviderConfigToml,
     #[serde(default)]
@@ -352,7 +354,8 @@ impl ProvidersToml {
             ProviderKind::XiaomiMimo => &self.xiaomi_mimo,
             ProviderKind::Novita => &self.novita,
             ProviderKind::Fireworks => &self.fireworks,
-            ProviderKind::Siliconflow | ProviderKind::SiliconflowCN => &self.siliconflow,
+            ProviderKind::Siliconflow => &self.siliconflow,
+            ProviderKind::SiliconflowCN => &self.siliconflow_cn,
             ProviderKind::Arcee => &self.arcee,
             ProviderKind::Moonshot => &self.moonshot,
             ProviderKind::Sglang => &self.sglang,
@@ -376,7 +379,8 @@ impl ProvidersToml {
             ProviderKind::XiaomiMimo => &mut self.xiaomi_mimo,
             ProviderKind::Novita => &mut self.novita,
             ProviderKind::Fireworks => &mut self.fireworks,
-            ProviderKind::Siliconflow | ProviderKind::SiliconflowCN => &mut self.siliconflow,
+            ProviderKind::Siliconflow => &mut self.siliconflow,
+            ProviderKind::SiliconflowCN => &mut self.siliconflow_cn,
             ProviderKind::Arcee => &mut self.arcee,
             ProviderKind::Moonshot => &mut self.moonshot,
             ProviderKind::Sglang => &mut self.sglang,
@@ -1945,7 +1949,19 @@ impl ConfigToml {
         let env = EnvRuntimeOverrides::load();
         let provider = cli.provider.or(env.provider).unwrap_or(self.provider);
 
-        let provider_cfg = self.providers.for_provider(provider);
+        let mut provider_cfg = self.providers.for_provider(provider).clone();
+        if provider == ProviderKind::SiliconflowCN {
+            let fb = &self.providers.siliconflow;
+            if provider_cfg.api_key.is_none() {
+                provider_cfg.api_key = fb.api_key.clone();
+            }
+            if provider_cfg.base_url.is_none() {
+                provider_cfg.base_url = fb.base_url.clone();
+            }
+            if provider_cfg.model.is_none() {
+                provider_cfg.model = fb.model.clone();
+            }
+        }
         let root_deepseek_api_key = (provider == ProviderKind::Deepseek)
             .then(|| self.api_key.clone())
             .flatten();
@@ -5111,11 +5127,11 @@ unix_socket_path = "/tmp/cw-hooks.sock"
             provider::resolve_provider("siliconflow-cn").expect("siliconflow-cn alias resolves");
         assert_eq!(siliconflow_cn.kind(), ProviderKind::SiliconflowCN);
         assert_eq!(siliconflow_cn.id(), "siliconflow-CN");
-        assert_eq!(siliconflow_cn.provider_config_key(), "siliconflow");
+        assert_eq!(siliconflow_cn.provider_config_key(), "siliconflow_cn");
 
         let config = ProvidersToml::default();
         let shared_table = config.for_provider(ProviderKind::SiliconflowCN);
-        assert!(std::ptr::eq(
+        assert!(!std::ptr::eq(
             shared_table,
             config.for_provider(ProviderKind::Siliconflow)
         ));

@@ -378,6 +378,13 @@ max_subagents = 10 # optional (1-20)
 # base_url = "https://api.siliconflow.com/v1"
 # model = "deepseek-ai/DeepSeek-V4-Pro"     # or deepseek-ai/DeepSeek-V4-Flash
 
+# SiliconFlow China-hosted DeepSeek V4 (https://siliconflow.cn)
+# Falls back to [providers.siliconflow] for api_key / base_url / model when unset.
+[providers.siliconflow-CN]
+# api_key = "YOUR_SILICONFLOW_API_KEY"
+# base_url = "https://api.siliconflow.cn/v1"
+# model = "deepseek-ai/DeepSeek-V4-Pro"
+
 # Arcee AI direct OpenAI-compatible endpoint (https://docs.arcee.ai)
 [providers.arcee]
 # api_key = "YOUR_ARCEE_API_KEY"
