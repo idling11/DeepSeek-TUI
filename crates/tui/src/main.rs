@@ -3344,7 +3344,11 @@ fn context_report_for_workspace(workspace: &Path) -> crate::context_report::Prom
             if let Ok(content) = std::fs::read_to_string(path) {
                 let sz = content.len();
                 let truncated = if sz > 100 * 1024 {
-                    content[..100 * 1024].to_string()
+                    let head_end = (0..=100 * 1024)
+                        .rev()
+                        .find(|&i| content.is_char_boundary(i))
+                        .unwrap_or(0);
+                    content[..head_end].to_string()
                 } else {
                     content
                 };
