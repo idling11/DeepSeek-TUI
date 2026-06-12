@@ -72,6 +72,7 @@ pub struct SourceEntry {
 /// Stable categorisation of prompt source types.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[allow(dead_code)] // LocaleReinforcement, Other reserved for future source types (#3102)
 pub enum SourceKind {
     /// The Constitution of CodeWhale (base system prompt).
     Constitution,
@@ -150,6 +151,7 @@ pub enum ActivationReason {
 /// Confidence level for the token estimate.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[allow(dead_code)] // Exact reserved for provider tokenizer parity (future #3086)
 pub enum CountingConfidence {
     /// Byte-exact count from the provider API response.
     Exact,

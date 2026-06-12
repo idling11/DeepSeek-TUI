@@ -6357,9 +6357,6 @@ async fn apply_command_result(
                     });
                 }
             },
-            AppAction::OpenContextInspector => {
-                open_context_inspector(app);
-            }
             AppAction::CompactContext => {
                 app.status_message = Some("Compacting context...".to_string());
                 let _ = engine_handle.send(Op::CompactContext).await;

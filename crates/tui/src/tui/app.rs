@@ -5151,7 +5151,6 @@ pub enum AppAction {
     },
     UpdateCompaction(CompactionConfig),
     UpdateStreamChunkTimeout(u64),
-    OpenContextInspector,
     CompactContext,
     PurgeContext,
     TaskAdd {
