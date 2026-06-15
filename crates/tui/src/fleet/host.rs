@@ -821,7 +821,9 @@ mod tests {
             "printf 0123456789abcdef; sleep 30"
         };
         let mut request = FleetWorkerStartRequest::new("local-1", shell_command(script));
-        request.log_limit_bytes = 16;
+        // Enough headroom for the 16-char output plus platform line-endings
+        // (Windows `echo` appends a space + CRLF, adding 3 extra bytes).
+        request.log_limit_bytes = 64;
 
         let handle = adapter.start_worker(request).unwrap();
         assert_eq!(handle.host_kind, FleetHostKind::LocalProcess);
