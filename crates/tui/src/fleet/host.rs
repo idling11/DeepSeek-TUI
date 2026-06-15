@@ -830,7 +830,17 @@ mod tests {
         assert_eq!(status.state, FleetHostWorkerState::Running);
 
         let logs = wait_for_log(&adapter, "local-1", "abcdef");
-        assert!(logs.ends_with("0123456789abcdef") || logs.contains("0123456789abcdef"));
+        // Trim to tolerate platform-specific whitespace / line-ending variation
+        // (e.g. Windows echo may append spaces or \r\n).
+        assert!(
+            logs.trim().ends_with("0123456789abcdef")
+                || logs
+                    .replace("\r\n", "\n")
+                    .trim()
+                    .ends_with("0123456789abcdef")
+                || logs.contains("0123456789abcdef"),
+            "logs did not contain expected output: {logs:?}"
+        );
         let bounded = adapter.read_logs("local-1", 6).unwrap();
         assert!(bounded.ends_with("abcdef"), "{bounded:?}");
 
