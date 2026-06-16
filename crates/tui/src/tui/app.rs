@@ -3744,10 +3744,20 @@ impl App {
         byte_index_at_char(&self.input, self.cursor_position)
     }
 
+    /// When the user starts editing a truncated oversized paste, restore the
+    /// full text so they can see and edit the complete content (#3263).
+    fn auto_expand_oversized_paste(&mut self) {
+        if let Some(full) = self.oversized_paste_full_text.take() {
+            self.input = full;
+            self.cursor_position = 0;
+        }
+    }
+
     pub fn insert_str(&mut self, text: &str) {
         if text.is_empty() {
             return;
         }
+        self.auto_expand_oversized_paste();
         self.delete_selection();
         self.selected_attachment_index = None;
         let cursor = self.cursor_position.min(char_count(&self.input));
@@ -4008,6 +4018,7 @@ impl App {
 
     pub fn insert_char(&mut self, c: char) {
         self.clear_input_history_navigation();
+        self.auto_expand_oversized_paste();
         self.delete_selection();
         self.selected_attachment_index = None;
         let cursor = self.cursor_position.min(char_count(&self.input));
@@ -4032,6 +4043,7 @@ impl App {
 
     pub fn delete_char(&mut self) {
         self.clear_input_history_navigation();
+        self.auto_expand_oversized_paste();
         if self.delete_selection() {
             return;
         }
@@ -4052,6 +4064,7 @@ impl App {
 
     pub fn delete_char_forward(&mut self) {
         self.clear_input_history_navigation();
+        self.auto_expand_oversized_paste();
         if self.delete_selection() {
             return;
         }
@@ -4462,6 +4475,7 @@ impl App {
 
     /// Delete the character under the cursor (vim `x`).
     pub fn vim_delete_char_under_cursor(&mut self) {
+        self.auto_expand_oversized_paste();
         let total = char_count(&self.input);
         if self.cursor_position >= total {
             return;
@@ -4993,7 +5007,7 @@ impl App {
         let display_chars = char_count(&full_input).min(MAX_COMPOSER_DISPLAY_CHARS);
         let mut truncated: String = full_input.chars().take(display_chars).collect();
         if char_count(&full_input) > MAX_COMPOSER_DISPLAY_CHARS {
-            truncated.push_str("\n\n---\n(content truncated for display; full text sent to model)");
+            truncated.push_str("\n\n---\n(content truncated for display — start typing to expand; full text sent to model)");
         }
         self.input = truncated;
         self.cursor_position = 0;
