@@ -1046,6 +1046,10 @@ pub struct ComposerState {
     /// Single-entry kill buffer for emacs-style `Ctrl+K` cut / `Ctrl+Y` yank.
     pub kill_buffer: String,
     pub paste_burst: PasteBurst,
+    /// When a large paste is consolidated at submit time, the file @mention
+    /// is stored here so it can be appended to the submitted text without
+    /// replacing the visible composer content (#3263).
+    pub(crate) pending_paste_reference: Option<String>,
     pub input_history: Vec<String>,
     pub draft_history: VecDeque<String>,
     pub clear_undo_buffer: Option<String>,
@@ -1082,6 +1086,7 @@ impl Default for ComposerState {
             cursor_position: 0,
             kill_buffer: String::new(),
             paste_burst: PasteBurst::default(),
+            pending_paste_reference: None,
             input_history: Vec::new(),
             draft_history: VecDeque::new(),
             clear_undo_buffer: None,
@@ -2231,6 +2236,7 @@ impl App {
                 cursor_position: initial_input_cursor,
                 kill_buffer: String::new(),
                 paste_burst: PasteBurst::default(),
+                pending_paste_reference: None,
                 input_history,
                 draft_history: VecDeque::new(),
                 clear_undo_buffer: None,
@@ -4805,7 +4811,15 @@ impl App {
         // the consolidation in `insert_paste_text` first, so the user
         // sees the @mention in the composer before submission.
         self.consolidate_large_input_if_oversized();
-        let input = self.input.clone();
+        // If consolidation created a paste file, append the @mention so the
+        // model can read the full content while the composer stays editable.
+        let mut input = self.input.clone();
+        if let Some(reference) = self.pending_paste_reference.take() {
+            if !input.is_empty() && !input.ends_with('\n') {
+                input.push('\n');
+            }
+            input.push_str(&reference);
+        }
         if !looks_like_slash_command_input(&input) {
             self.input_history.push(input.clone());
             if self.max_input_history == 0 {
@@ -4957,10 +4971,14 @@ impl App {
             return;
         }
 
-        self.input = format!("@{rel_path}");
+        // Keep the full text visible in the composer so the user can still
+        // select, copy, and edit it. The @mention is stored for appending
+        // at submit time instead of replacing the visible content (#3263).
+        self.pending_paste_reference = Some(format!("@{rel_path}"));
+        self.input = full_input;
         self.cursor_position = char_count(&self.input);
         self.push_status_toast(
-            "Large paste consolidated — auto-wrote to file and replaced with @mention. The text is still fully accessible to the model.",
+            "Large paste backed up to file — the model will receive the full content. You can still edit the visible text below.",
             StatusToastLevel::Info,
             Some(5_000),
         );
@@ -6463,9 +6481,9 @@ mod tests {
 
     #[test]
     fn paste_defers_oversized_text_consolidation_until_submit() {
-        // #2168: a large paste stays inline so the user can still edit it.
-        // Submit-time consolidation then writes the paste file and sends the
-        // @mention instead of the raw oversized content.
+        // (#3263): a large paste stays inline so the user can still edit it.
+        // At submit time, the full text is sent to the model with the @mention
+        // appended so the model can also read the paste file backup.
         let tmp = tempfile::TempDir::new().expect("tempdir");
         let mut opts = test_options(false);
         opts.workspace = tmp.path().to_path_buf();
@@ -6484,25 +6502,35 @@ mod tests {
         assert!(
             app.status_toasts
                 .iter()
-                .all(|toast| !toast.text.contains("consolidated")),
-            "consolidation toast should not appear before submit"
+                .all(|toast| !toast.text.contains("backed up")),
+            "backup toast should not appear before submit"
         );
 
         let submitted = app.submit_input().expect("expected submitted input");
+        // The submitted text should contain the original content with the
+        // @mention appended at the end (#3263).
         assert!(
-            submitted.starts_with("@.codewhale/pastes/paste-") && submitted.ends_with(".md"),
-            "expected @mention after submit, got: {submitted}"
+            submitted.starts_with(&full_content),
+            "submitted should contain full content, got: {}",
+            &submitted[..submitted.len().min(80)]
         );
-        let rel_path = &submitted[1..];
-        let abs = tmp.path().join(rel_path);
+        let mention_start = full_content.len();
+        assert!(
+            submitted[mention_start..].starts_with("\n@.codewhale/pastes/paste-"),
+            "expected @mention suffix, got: {}",
+            &submitted[mention_start..]
+        );
+        assert!(submitted.ends_with(".md"), "expected .md extension");
+        let mention = &submitted[mention_start + 2..]; // strip '\n@'
+        let abs = tmp.path().join(mention);
         assert!(abs.is_file(), "paste file must exist at {abs:?}");
         let written = std::fs::read_to_string(&abs).expect("read");
         assert_eq!(written, full_content);
         assert!(
             app.status_toasts
                 .iter()
-                .any(|toast| toast.text.contains("consolidated")),
-            "expected consolidation toast after submit"
+                .any(|toast| toast.text.contains("backed up")),
+            "expected backup toast after submit"
         );
     }
 
@@ -6540,11 +6568,19 @@ mod tests {
 
         let submitted = app.submit_input().expect("expected submitted input");
 
-        // The submitted text should be the @mention, not the truncated
-        // original (#553).
+        // The submitted text should still contain the original content, with
+        // the @mention appended at the end so the model can read the file
+        // while the composer stays editable for the user (#3263).
         assert!(
-            submitted.starts_with("@.codewhale/pastes/paste-"),
-            "expected @mention, got: {submitted}"
+            submitted.starts_with(&full_content),
+            "submitted text should contain original content, got: {}",
+            &submitted[..submitted.len().min(80)]
+        );
+        let mention_start = full_content.len();
+        assert!(
+            submitted[mention_start..].starts_with("\n@.codewhale/pastes/paste-"),
+            "submitted text should end with @mention, got suffix: {}",
+            &submitted[mention_start..]
         );
         assert!(
             submitted.ends_with(".md"),
@@ -6552,8 +6588,8 @@ mod tests {
         );
 
         // The paste file must exist on disk with the full original content.
-        let rel_path = &submitted[1..]; // strip leading '@'
-        let abs_path = tmp.path().join(rel_path);
+        let mention = &submitted[mention_start + 2..]; // strip leading '\n@'
+        let abs_path = tmp.path().join(mention);
         assert!(abs_path.is_file(), "paste file must exist at {abs_path:?}");
         let written = std::fs::read_to_string(&abs_path).expect("read paste file");
         assert_eq!(written, full_content);
@@ -6562,8 +6598,8 @@ mod tests {
         assert!(
             app.status_toasts
                 .iter()
-                .any(|toast| toast.text.contains("consolidated")),
-            "expected consolidation toast, got: {:?}",
+                .any(|toast| toast.text.contains("backed up")),
+            "expected backup toast, got: {:?}",
             app.status_toasts
                 .iter()
                 .map(|t| &t.text)
