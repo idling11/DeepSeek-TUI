@@ -3707,6 +3707,43 @@ fn sidebar_auto_idle_false_for_explicit_focus() {
     assert!(!crate::tui::sidebar::sidebar_auto_idle(&mut app));
 }
 
+#[test]
+fn jobs_panel_ignores_model_reasoning_but_shows_for_real_jobs() {
+    let mut app = create_test_app();
+    app.sidebar_focus = SidebarFocus::Auto;
+
+    // Per-turn model reasoning must NOT bring the jobs/tasks panel up — an
+    // ordinary reasoning turn stays idle (full-width transcript).
+    app.task_panel = vec![crate::tui::app::TaskPanelEntry {
+        id: "reasoning".to_string(),
+        status: "running".to_string(),
+        prompt_summary: "thinking".to_string(),
+        duration_ms: None,
+        kind: crate::tui::app::TaskPanelEntryKind::ModelReasoning,
+        stale: false,
+        elapsed_since_output_ms: None,
+    }];
+    assert!(
+        crate::tui::sidebar::sidebar_auto_idle(&mut app),
+        "model reasoning alone must not surface the jobs panel"
+    );
+
+    // A real background job (Background) does surface it.
+    app.task_panel.push(crate::tui::app::TaskPanelEntry {
+        id: "shell_1".to_string(),
+        status: "running".to_string(),
+        prompt_summary: "shell: cargo test".to_string(),
+        duration_ms: Some(10),
+        kind: crate::tui::app::TaskPanelEntryKind::Background,
+        stale: false,
+        elapsed_since_output_ms: None,
+    });
+    assert!(
+        !crate::tui::sidebar::sidebar_auto_idle(&mut app),
+        "a real background job must surface the jobs panel"
+    );
+}
+
 // ── Sidebar resize-handle mouse tests ──────────────────────────────
 
 fn setup_resize_handle(app: &mut App, handle_x: u16, sidebar_width: u16, total_width: u16) {

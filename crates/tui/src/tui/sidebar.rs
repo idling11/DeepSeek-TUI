@@ -119,7 +119,14 @@ fn render_sidebar_auto(f: &mut Frame, area: Rect, app: &mut App) {
 fn auto_sidebar_state(app: &mut App) -> AutoSidebarState {
     AutoSidebarState {
         work_has_content: sidebar_work_summary(app).has_useful_content(),
-        tasks_empty: app.task_panel.is_empty(),
+        // The jobs/tasks panel appears only for real background work — running
+        // shell jobs, RLM, or durable Fleet tasks (`Background` entries).
+        // Per-turn model reasoning (`ModelReasoning`) never counts, so an
+        // ordinary reasoning turn shows no panel at all.
+        tasks_empty: !app
+            .task_panel
+            .iter()
+            .any(|entry| entry.kind == TaskPanelEntryKind::Background),
         agents_empty: app.subagent_cache.is_empty()
             && app.agent_progress.is_empty()
             && active_fanout_counts(app).is_none()
