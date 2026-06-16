@@ -878,6 +878,10 @@ fn match_kitty_csi_fragment(chars: &[char], start: usize) -> Option<usize> {
 }
 
 const MAX_SUBMITTED_INPUT_CHARS: usize = 16_000;
+/// Maximum characters displayed in the composer for oversized input.
+/// Beyond this, the text is truncated for rendering but the full content
+/// is preserved for model submission (#3263).
+const MAX_COMPOSER_DISPLAY_CHARS: usize = 4_000;
 const MAX_DRAFT_HISTORY: usize = 50;
 
 impl AppMode {
@@ -1050,6 +1054,10 @@ pub struct ComposerState {
     /// is stored here so it can be appended to the submitted text without
     /// replacing the visible composer content (#3263).
     pub(crate) pending_paste_reference: Option<String>,
+    /// When composer content is oversized, the full text is stored here
+    /// while `self.input` shows a truncated preview. At submit time the
+    /// full text is restored for model submission (#3263).
+    pub(crate) oversized_paste_full_text: Option<String>,
     pub input_history: Vec<String>,
     pub draft_history: VecDeque<String>,
     pub clear_undo_buffer: Option<String>,
@@ -1087,6 +1095,7 @@ impl Default for ComposerState {
             kill_buffer: String::new(),
             paste_burst: PasteBurst::default(),
             pending_paste_reference: None,
+            oversized_paste_full_text: None,
             input_history: Vec::new(),
             draft_history: VecDeque::new(),
             clear_undo_buffer: None,
@@ -2237,6 +2246,7 @@ impl App {
                 kill_buffer: String::new(),
                 paste_burst: PasteBurst::default(),
                 pending_paste_reference: None,
+                oversized_paste_full_text: None,
                 input_history,
                 draft_history: VecDeque::new(),
                 clear_undo_buffer: None,
@@ -4811,9 +4821,13 @@ impl App {
         // the consolidation in `insert_paste_text` first, so the user
         // sees the @mention in the composer before submission.
         self.consolidate_large_input_if_oversized();
-        // If consolidation created a paste file, append the @mention so the
-        // model can read the full content while the composer stays editable.
-        let mut input = self.input.clone();
+        // If consolidation created a paste file, restore the full text and
+        // append the @mention so the model can read the complete content
+        // while the composer stays editable (#3263).
+        let mut input = self
+            .oversized_paste_full_text
+            .take()
+            .unwrap_or_else(|| self.input.clone());
         if let Some(reference) = self.pending_paste_reference.take() {
             if !input.is_empty() && !input.ends_with('\n') {
                 input.push('\n');
@@ -4971,14 +4985,20 @@ impl App {
             return;
         }
 
-        // Keep the full text visible in the composer so the user can still
-        // select, copy, and edit it. The @mention is stored for appending
-        // at submit time instead of replacing the visible content (#3263).
+        // Keep a truncated preview in the composer so the user can still
+        // select, copy, and edit it, while the full text is stored for
+        // model submission. The @mention is appended at submit time (#3263).
         self.pending_paste_reference = Some(format!("@{rel_path}"));
-        self.input = full_input;
-        self.cursor_position = char_count(&self.input);
+        self.oversized_paste_full_text = Some(full_input.clone());
+        let display_chars = char_count(&full_input).min(MAX_COMPOSER_DISPLAY_CHARS);
+        let mut truncated: String = full_input.chars().take(display_chars).collect();
+        if char_count(&full_input) > MAX_COMPOSER_DISPLAY_CHARS {
+            truncated.push_str("\n\n---\n(content truncated for display; full text sent to model)");
+        }
+        self.input = truncated;
+        self.cursor_position = 0;
         self.push_status_toast(
-            "Large paste backed up to file — the model will receive the full content. You can still edit the visible text below.",
+            "Large paste backed up to file — the model will receive the full content.",
             StatusToastLevel::Info,
             Some(5_000),
         );
