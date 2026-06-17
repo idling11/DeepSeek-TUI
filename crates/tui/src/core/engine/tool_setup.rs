@@ -139,6 +139,11 @@ impl Engine {
         // so there's no failure mode worth gating on.
         builder = builder.with_notify_tool();
 
+        // Register the `resolve_workroom_link` tool (#3209). This is a
+        // read-only parser that returns thread metadata without accessing
+        // any external services.
+        builder = builder.with_workroom_link_tool();
+
         builder
     }
 }

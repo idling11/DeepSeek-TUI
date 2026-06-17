@@ -14,9 +14,12 @@ use codewhale_config::{CliRuntimeOverrides, ConfigStore};
 use codewhale_core::Runtime;
 use codewhale_hooks::{HookDispatcher, JsonlHookSink, StdoutHookSink, UnixSocketHookSink};
 use codewhale_mcp::McpManager;
+use codewhale_protocol::workroom::{
+    WorkroomId, WorkroomListResponse, WorkroomResolveResponse, WorkroomSummary, WorkroomThread,
+};
 use codewhale_protocol::{
     AppRequest, AppResponse, PromptRequest, PromptResponse, ThreadGoalClearParams,
-    ThreadGoalGetParams, ThreadGoalSetParams, ThreadRequest, ThreadResponse,
+    ThreadGoalGetParams, ThreadGoalSetParams, ThreadListParams, ThreadRequest, ThreadResponse,
 };
 use codewhale_state::StateStore;
 use codewhale_tools::{ToolCall, ToolRegistry};
@@ -150,6 +153,12 @@ fn app_router(state: AppState, cors_origins: &[String]) -> Router {
         .route("/tool", post(tool_handler))
         .route("/jobs", get(jobs_handler))
         .route("/mcp/startup", post(mcp_startup_handler))
+        .route("/workrooms", get(workrooms_handler))
+        .route(
+            "/workroom/{workroom_id}/threads",
+            get(workroom_threads_handler),
+        )
+        .route("/workroom/resolve", get(workroom_resolve_handler))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             require_app_server_token,
@@ -1479,4 +1488,92 @@ mod tests {
         assert!(DEFAULT_CORS_ORIGINS.contains(&"http://localhost:5173"));
         assert!(DEFAULT_CORS_ORIGINS.contains(&"tauri://localhost"));
     }
+}
+
+// ── Workroom handlers ─────────────────────────────────────────────────────────
+
+async fn workrooms_handler(State(state): State<AppState>) -> Json<WorkroomListResponse> {
+    let mut runtime = state.runtime.lock().await;
+    let threads = match runtime
+        .handle_thread(ThreadRequest::List(ThreadListParams {
+            include_archived: false,
+            limit: None,
+        }))
+        .await
+    {
+        Ok(resp) => resp.threads,
+        Err(e) => {
+            tracing::warn!("Failed to list threads: {e}");
+            Vec::new()
+        }
+    };
+    // Build a synthetic workroom summary from active threads for now.
+    // Phase 2 will persist dedicated workroom state.
+    let summary = WorkroomSummary {
+        id: WorkroomId::new(),
+        title: "Default Workroom".to_string(),
+        updated_at: chrono::Utc::now(),
+        active_threads: threads.len(),
+    };
+    Json(WorkroomListResponse {
+        workrooms: vec![summary],
+    })
+}
+
+#[derive(Deserialize)]
+struct WorkroomThreadsParams {
+    #[serde(rename = "workroom_id")]
+    _workroom_id: String,
+}
+
+async fn workroom_threads_handler(
+    State(state): State<AppState>,
+    axum::extract::Path(params): axum::extract::Path<WorkroomThreadsParams>,
+) -> Json<Vec<WorkroomThread>> {
+    let _runtime = state.runtime.lock().await;
+    // Phase 2: return actual workroom threads from persisted state.
+    let _wr_id = WorkroomId(params._workroom_id);
+    Json(Vec::new())
+}
+
+#[derive(Deserialize)]
+struct WorkroomResolveParams {
+    link: String,
+}
+
+async fn workroom_resolve_handler(
+    State(state): State<AppState>,
+    axum::extract::Query(params): axum::extract::Query<WorkroomResolveParams>,
+) -> Result<Json<WorkroomResolveResponse>, (StatusCode, Json<Value>)> {
+    let link =
+        codewhale_protocol::workroom::WorkroomLink::parse(&params.link).ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "invalid workroom link format"})),
+            )
+        })?;
+
+    let mut runtime = state.runtime.lock().await;
+    let threads = match runtime
+        .handle_thread(ThreadRequest::List(ThreadListParams {
+            include_archived: false,
+            limit: None,
+        }))
+        .await
+    {
+        Ok(resp) => resp.threads,
+        Err(e) => {
+            tracing::warn!("Failed to list threads: {e}");
+            Vec::new()
+        }
+    };
+
+    let thread_title = threads.first().map(|t| t.preview.clone());
+    let response = WorkroomResolveResponse {
+        link,
+        thread_title,
+        external_ref: None,
+        recent_events: Vec::new(),
+    };
+    Ok(Json(response))
 }

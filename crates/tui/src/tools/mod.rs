@@ -59,6 +59,7 @@ pub mod validate_data;
 pub mod verifier;
 pub mod web_run;
 pub mod web_search;
+pub mod workroom_link;
 
 pub use registry::{ToolRegistry, ToolRegistryBuilder};
 pub use review::ReviewOutput;

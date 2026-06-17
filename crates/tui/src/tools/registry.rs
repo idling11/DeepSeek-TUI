@@ -881,6 +881,16 @@ impl ToolRegistryBuilder {
         self.with_tool(Arc::new(NotifyTool))
     }
 
+    /// Include the `resolve_workroom_link` tool (#3209) — model-callable
+    /// parser for `codewhale://workroom/...` URLs. Returns thread metadata,
+    /// external refs, and recent event summaries without replaying the full
+    /// transcript. Phase 1 stub; full resolution will come in Phase 2.
+    #[must_use]
+    pub fn with_workroom_link_tool(self) -> Self {
+        use super::workroom_link::ResolveWorkroomLinkTool;
+        self.with_tool(Arc::new(ResolveWorkroomLinkTool))
+    }
+
     /// Include MCP tools from a connected pool as first-class registry
     /// citizens. Each MCP tool is wrapped in a lightweight adapter that
     /// implements `ToolSpec`, so the unified `ToolRegistryBuilder` flow

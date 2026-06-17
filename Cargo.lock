@@ -789,6 +789,7 @@ version = "0.8.61"
 dependencies = [
  "anyhow",
  "axum",
+ "chrono",
  "clap",
  "codewhale-agent",
  "codewhale-config",
@@ -910,8 +911,10 @@ dependencies = [
 name = "codewhale-protocol"
 version = "0.8.61"
 dependencies = [
+ "chrono",
  "serde",
  "serde_json",
+ "uuid",
 ]
 
 [[package]]

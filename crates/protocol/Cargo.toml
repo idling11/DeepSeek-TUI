@@ -7,5 +7,7 @@ repository.workspace = true
 description = "Codex-style app-server protocol frames for DeepSeek workspace architecture"
 
 [dependencies]
+chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+uuid.workspace = true

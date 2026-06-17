@@ -5,6 +5,7 @@ use serde_json::Value;
 
 pub mod fleet;
 pub mod runtime;
+pub mod workroom;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Envelope<T> {
