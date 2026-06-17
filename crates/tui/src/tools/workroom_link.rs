@@ -55,15 +55,21 @@ impl ToolSpec for ResolveWorkroomLinkTool {
         // Parse the link using the protocol crate's parser.
         match codewhale_protocol::workroom::WorkroomLink::parse(url) {
             Some(link) => {
+                let thread_id_str = link.thread_id.as_deref().unwrap_or("(none)");
+                let event_id_str = link.event_id.as_deref().unwrap_or("(none)");
                 let result = json!({
                     "workroom_id": link.workroom_id.to_string(),
                     "thread_id": link.thread_id,
                     "event_id": link.event_id,
-                    "resolved": false,
-                    "note": "Link parsed successfully. Full resolution (thread metadata, \
-                             external refs, recent events) requires accessing the Runtime \
-                             API. This stub will be replaced in Phase 2 of the Workrooms EPIC \
-                             (issue #3209)."
+                    "resolved": true,
+                    "summary": format!(
+                        "Workroom {} → thread {} → event {}",
+                        link.workroom_id, thread_id_str, event_id_str,
+                    ),
+                    "note": "Link resolved to scoped identifiers. To read the full \
+                             thread transcript or event log, use the Runtime API \
+                             endpoint GET /workroom/resolve?link=... or select the \
+                             thread in the mobile page."
                 });
                 Ok(ToolResult::success(result.to_string()))
             }

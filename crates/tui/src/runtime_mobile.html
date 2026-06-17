@@ -228,7 +228,7 @@
         <strong>Threads</strong>
         <button id="new-thread" class="primary">New</button>
       </div>
-      <div class="body"><div id="threads"></div></div>
+      <div class="body"><div id="workroom-summary" class="meta">Loading…</div><div id="threads"></div></div>
     </section>
 
     <section class="chat">
@@ -439,6 +439,25 @@
           escapeHtml(thread.model || "") + "</div>";
         el.onclick = () => selectThread(thread.id, thread.title || thread.id);
         list.appendChild(el);
+      }
+      loadWorkroomSummary(); // #3209: also refresh the workroom projection
+    }
+
+    async function loadWorkroomSummary() {
+      try {
+        const data = await api("/workrooms");
+        const el = $("workroom-summary");
+        if (!data || !data.workrooms || !data.workrooms.length) {
+          el.textContent = "No workrooms.";
+          return;
+        }
+        const wr = data.workrooms[0];
+        el.textContent =
+          "Workroom: " + wr.title +
+          " · " + wr.active_threads + " active thread" + (wr.active_threads !== 1 ? "s" : "");
+      } catch (e) {
+        // /workrooms may not be available yet — silent fallback
+        $("workroom-summary").textContent = "Workroom unavailable.";
       }
     }
 

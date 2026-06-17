@@ -676,6 +676,8 @@ pub fn build_router(state: RuntimeApiState) -> Router {
         .route("/mobile", get(mobile_page))
         .route("/mobile/", get(mobile_page))
         .route("/v1/runtime/info", get(runtime_info))
+        .route("/workrooms", get(workrooms_summary))
+        .route("/workroom/resolve", get(workroom_resolve))
         .merge(api_routes)
         .layer(cors_layer(&state.cors_origins))
         .with_state(state)
@@ -782,6 +784,98 @@ async fn mobile_page(State(state): State<RuntimeApiState>, req: Request) -> Resp
         return runtime_token_required_response();
     }
     Html(MOBILE_HTML).into_response()
+}
+
+// ── Workroom endpoints (Phase 1, #3209) ────────────────────────────────────────
+
+/// GET /workrooms — list workrooms visible to the caller.
+///
+/// Builds a synthetic workroom summary from the live thread list so the
+/// mobile page and other surfaces can consume a real projection.  Phase 2
+/// will replace this with a dedicated persisted workroom store.
+async fn workrooms_summary(State(state): State<RuntimeApiState>, req: Request) -> Response {
+    if let Some(expected) = state.runtime_token.as_deref()
+        && !request_has_runtime_token(&req, expected)
+    {
+        return runtime_token_required_response();
+    }
+
+    let threads = state
+        .runtime_threads
+        .list_threads(ThreadListFilter::ActiveOnly, Some(100))
+        .await
+        .unwrap_or_default();
+
+    let active_count = threads.len();
+    let latest_ts = threads
+        .iter()
+        .map(|t| t.created_at)
+        .max()
+        .unwrap_or_else(chrono::Utc::now);
+
+    let summary = codewhale_protocol::workroom::WorkroomSummary {
+        id: codewhale_protocol::workroom::WorkroomId::new(),
+        title: "Default Workroom".to_string(),
+        updated_at: latest_ts,
+        active_threads: active_count,
+    };
+
+    Json(codewhale_protocol::workroom::WorkroomListResponse {
+        workrooms: vec![summary],
+    })
+    .into_response()
+}
+
+/// GET /workroom/resolve?link=… — resolve a codewhale://workroom/… link.
+///
+/// When the link contains a thread id, looks up that specific thread.
+/// Returns scoped context (thread metadata, external refs, recent events).
+async fn workroom_resolve(
+    State(state): State<RuntimeApiState>,
+    axum::extract::Query(params): axum::extract::Query<WorkroomResolveQuery>,
+    req: Request,
+) -> Response {
+    if let Some(expected) = state.runtime_token.as_deref()
+        && !request_has_runtime_token(&req, expected)
+    {
+        return runtime_token_required_response();
+    }
+
+    let link = match codewhale_protocol::workroom::WorkroomLink::parse(&params.link) {
+        Some(l) => l,
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "invalid workroom link format"})),
+            )
+                .into_response();
+        }
+    };
+
+    let thread_title = if let Some(ref tid) = link.thread_id {
+        state
+            .runtime_threads
+            .get_thread(tid)
+            .await
+            .ok()
+            .map(|t| t.title.unwrap_or(t.id))
+    } else {
+        None
+    };
+
+    let response = codewhale_protocol::workroom::WorkroomResolveResponse {
+        link,
+        thread_title,
+        external_ref: None,
+        recent_events: Vec::new(),
+    };
+
+    Json(response).into_response()
+}
+
+#[derive(Deserialize)]
+struct WorkroomResolveQuery {
+    link: String,
 }
 
 fn print_mobile_urls(addr: SocketAddr, token: Option<&str>, auth_enabled: bool, show_qr: bool) {

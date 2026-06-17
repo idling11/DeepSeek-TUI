@@ -19,7 +19,8 @@ use codewhale_protocol::workroom::{
 };
 use codewhale_protocol::{
     AppRequest, AppResponse, PromptRequest, PromptResponse, ThreadGoalClearParams,
-    ThreadGoalGetParams, ThreadGoalSetParams, ThreadListParams, ThreadRequest, ThreadResponse,
+    ThreadGoalGetParams, ThreadGoalSetParams, ThreadListParams, ThreadReadParams, ThreadRequest,
+    ThreadResponse,
 };
 use codewhale_state::StateStore;
 use codewhale_tools::{ToolCall, ToolRegistry};
@@ -1492,6 +1493,11 @@ mod tests {
 
 // ── Workroom handlers ─────────────────────────────────────────────────────────
 
+/// GET /workrooms — list all workrooms visible to the authenticated caller.
+///
+/// Builds a single synthetic workroom from the live thread list so that the
+/// mobile page and other surfaces can consume a real projection.  Phase 2 will
+/// replace this with a dedicated persisted workroom store.
 async fn workrooms_handler(State(state): State<AppState>) -> Json<WorkroomListResponse> {
     let mut runtime = state.runtime.lock().await;
     let threads = match runtime
@@ -1503,18 +1509,27 @@ async fn workrooms_handler(State(state): State<AppState>) -> Json<WorkroomListRe
     {
         Ok(resp) => resp.threads,
         Err(e) => {
-            tracing::warn!("Failed to list threads: {e}");
+            tracing::warn!("Failed to list threads for /workrooms: {e}");
             Vec::new()
         }
     };
-    // Build a synthetic workroom summary from active threads for now.
-    // Phase 2 will persist dedicated workroom state.
+
+    let active_count = threads
+        .iter()
+        .filter(|t| t.status != codewhale_protocol::ThreadStatus::Archived)
+        .count();
+
+    // Use the most recently updated thread's timestamp as the workroom
+    // updated_at so surfaces can sort correctly.
+    let latest_ts = threads.iter().map(|t| t.updated_at).max().unwrap_or(0);
+
     let summary = WorkroomSummary {
         id: WorkroomId::new(),
         title: "Default Workroom".to_string(),
-        updated_at: chrono::Utc::now(),
-        active_threads: threads.len(),
+        updated_at: chrono::DateTime::from_timestamp(latest_ts, 0).unwrap_or_else(chrono::Utc::now),
+        active_threads: active_count,
     };
+
     Json(WorkroomListResponse {
         workrooms: vec![summary],
     })
@@ -1526,14 +1541,45 @@ struct WorkroomThreadsParams {
     _workroom_id: String,
 }
 
+/// GET /workroom/:workroom_id/threads — list active threads within a workroom.
+///
+/// Returns the live thread list projected as WorkroomThread stubs.  Phase 2
+/// will filter by the actual workroom id and return persisted thread records.
 async fn workroom_threads_handler(
     State(state): State<AppState>,
     axum::extract::Path(params): axum::extract::Path<WorkroomThreadsParams>,
 ) -> Json<Vec<WorkroomThread>> {
-    let _runtime = state.runtime.lock().await;
-    // Phase 2: return actual workroom threads from persisted state.
     let _wr_id = WorkroomId(params._workroom_id);
-    Json(Vec::new())
+    let mut runtime = state.runtime.lock().await;
+
+    let threads = match runtime
+        .handle_thread(ThreadRequest::List(ThreadListParams {
+            include_archived: false,
+            limit: None,
+        }))
+        .await
+    {
+        Ok(resp) => resp.threads,
+        Err(e) => {
+            tracing::warn!("Failed to list threads for /workroom/…/threads: {e}");
+            Vec::new()
+        }
+    };
+
+    let now = chrono::Utc::now();
+    let result: Vec<WorkroomThread> = threads
+        .into_iter()
+        .map(|t| WorkroomThread {
+            id: t.id,
+            workroom_id: _wr_id.clone(),
+            title: t.name.unwrap_or_else(|| t.preview.clone()),
+            kind: codewhale_protocol::workroom::WorkroomThreadKind::Channel,
+            external_ref: None,
+            created_at: chrono::DateTime::from_timestamp(t.created_at, 0).unwrap_or(now),
+        })
+        .collect();
+
+    Json(result)
 }
 
 #[derive(Deserialize)]
@@ -1541,6 +1587,12 @@ struct WorkroomResolveParams {
     link: String,
 }
 
+/// GET /workroom/resolve?link=… — resolve a codewhale://workroom/… link to
+/// scoped context (thread metadata, external refs, recent events).
+///
+/// When the link contains a `thread` component, the handler looks up that
+/// specific thread via `ThreadRequest::Read` and returns its preview as the
+/// thread title.  Full event replay is deferred to Phase 2.
 async fn workroom_resolve_handler(
     State(state): State<AppState>,
     axum::extract::Query(params): axum::extract::Query<WorkroomResolveParams>,
@@ -1554,21 +1606,41 @@ async fn workroom_resolve_handler(
         })?;
 
     let mut runtime = state.runtime.lock().await;
-    let threads = match runtime
-        .handle_thread(ThreadRequest::List(ThreadListParams {
-            include_archived: false,
-            limit: None,
-        }))
-        .await
-    {
-        Ok(resp) => resp.threads,
-        Err(e) => {
-            tracing::warn!("Failed to list threads: {e}");
-            Vec::new()
+
+    // If the link includes a thread_id, look up that specific thread.
+    let thread_title = if let Some(ref tid) = link.thread_id {
+        match runtime
+            .handle_thread(ThreadRequest::Read(ThreadReadParams {
+                thread_id: tid.clone(),
+            }))
+            .await
+        {
+            Ok(resp) => resp.thread.map(|t| t.name.unwrap_or(t.preview)),
+            Err(e) => {
+                tracing::warn!("Failed to read thread '{tid}' for workroom resolve: {e}");
+                None
+            }
         }
+    } else {
+        // No thread_id in link — return the first active thread's preview.
+        let threads = match runtime
+            .handle_thread(ThreadRequest::List(ThreadListParams {
+                include_archived: false,
+                limit: Some(1),
+            }))
+            .await
+        {
+            Ok(resp) => resp.threads,
+            Err(e) => {
+                tracing::warn!("Failed to list threads for workroom resolve: {e}");
+                Vec::new()
+            }
+        };
+        threads
+            .first()
+            .map(|t| t.name.clone().unwrap_or_else(|| t.preview.clone()))
     };
 
-    let thread_title = threads.first().map(|t| t.preview.clone());
     let response = WorkroomResolveResponse {
         link,
         thread_title,
