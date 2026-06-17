@@ -224,7 +224,6 @@ cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo test --workspace --all-features --locked
 
 # 一致性验证
-cargo test -p codewhale-tui-core --test snapshot --locked
 cargo test -p codewhale-protocol --test parity_protocol --locked
 cargo test -p codewhale-state --test parity_state --locked
 
@@ -343,7 +342,6 @@ cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo test --workspace --all-features --locked
 
 # parity gates
-cargo test -p codewhale-tui-core --test snapshot --locked
 cargo test -p codewhale-protocol --test parity_protocol --locked
 cargo test -p codewhale-state --test parity_state --locked
 

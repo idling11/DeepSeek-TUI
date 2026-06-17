@@ -7,7 +7,6 @@ release_crates=(
   codewhale-release
   codewhale-secrets
   codewhale-state
-  codewhale-tui-core
   codewhale-whaleflow
   codewhale-execpolicy
   codewhale-hooks

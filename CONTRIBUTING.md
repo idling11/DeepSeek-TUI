@@ -290,7 +290,6 @@ crates/
 ├── hooks/         Lifecycle hooks (stdout/jsonl/webhook)
 ├── execpolicy/    Approval/sandbox policy engine
 ├── agent/         Model/provider registry
-└── tui-core/      Event-driven TUI state machine scaffold
 ```
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the live data flow across

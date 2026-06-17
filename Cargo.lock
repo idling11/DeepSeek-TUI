@@ -1035,10 +1035,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "codewhale-tui-core"
-version = "0.8.61"
-
-[[package]]
 name = "codewhale-whaleflow"
 version = "0.8.61"
 dependencies = [

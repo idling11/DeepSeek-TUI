@@ -97,7 +97,6 @@ Current boundary note (v0.8.6):
 - **`crates/protocol`** - Request/response framing and protocol types.
 - **`crates/secrets`** - OS keyring integration for API key storage.
 - **`crates/state`** - SQLite thread/session persistence layer.
-- **`crates/tui-core`** - Event-driven TUI state machine scaffold.
 
 ### LLM Integration
 

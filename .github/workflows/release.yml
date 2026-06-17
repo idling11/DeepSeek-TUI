@@ -48,8 +48,6 @@ jobs:
         run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
       - name: Workspace tests
         run: cargo test --workspace --all-features --locked
-      - name: TUI snapshot parity
-        run: cargo test -p codewhale-tui-core --test snapshot --locked
       - name: Protocol schema parity
         run: cargo test -p codewhale-protocol --test parity_protocol --locked
       - name: State persistence parity

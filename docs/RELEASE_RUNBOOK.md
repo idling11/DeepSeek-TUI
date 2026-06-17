@@ -5,7 +5,6 @@ and the `codewhale` npm wrapper.
 
 Current packaging note:
 - `codewhale-tui` is the live runtime crate shipped to users today.
-- `codewhale-tui-core` is a supporting workspace crate for the extraction/parity effort, not a replacement for the shipping runtime.
 - `codewhale-app-server` is a supporting library crate. The shipped entrypoint
   is `codewhale app-server`; do not add or publish a standalone app-server binary.
 
@@ -26,7 +25,6 @@ Current packaging note:
   - `codewhale-tools`
   - `codewhale-core`
   - `codewhale-app-server`
-  - `codewhale-tui-core`
   - `codewhale-whaleflow`
 
 ## Version Coordination
@@ -130,7 +128,6 @@ configured.
    - `codewhale-release`
    - `codewhale-secrets`
    - `codewhale-state`
-   - `codewhale-tui-core`
    - `codewhale-whaleflow`
    - `codewhale-execpolicy`
    - `codewhale-hooks`
