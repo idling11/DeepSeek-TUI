@@ -332,6 +332,50 @@ async fn background_start_advertises_task_status_completion() {
 }
 
 #[tokio::test]
+async fn background_shell_job_carries_subagent_owner() {
+    let tmp = tempdir().expect("tempdir");
+    let ctx = ToolContext::new(tmp.path()).with_owner_agent("agent_owner", "verifier");
+    let result = ExecShellTool
+        .execute(
+            json!({"command": sleep_command(2), "background": true}),
+            &ctx,
+        )
+        .await
+        .expect("start owned background shell");
+
+    let metadata = result.metadata.as_ref().expect("metadata");
+    assert_eq!(
+        metadata.get("owner_agent_id").and_then(Value::as_str),
+        Some("agent_owner")
+    );
+    assert_eq!(
+        metadata.get("owner_agent_name").and_then(Value::as_str),
+        Some("verifier")
+    );
+    let task_id = metadata
+        .get("task_id")
+        .and_then(Value::as_str)
+        .expect("task id")
+        .to_string();
+
+    {
+        let mut manager = ctx.shell_manager.lock().expect("shell manager");
+        let snapshot = manager
+            .list_jobs()
+            .into_iter()
+            .find(|job| job.id == task_id)
+            .expect("owned shell job snapshot");
+        assert_eq!(snapshot.owner_agent_id.as_deref(), Some("agent_owner"));
+        assert_eq!(snapshot.owner_agent_name.as_deref(), Some("verifier"));
+    }
+
+    ShellCancelTool
+        .execute(json!({"task_id": task_id}), &ctx)
+        .await
+        .expect("cancel owned background shell");
+}
+
+#[tokio::test]
 async fn drain_finished_jobs_reports_once() {
     let tmp = tempdir().expect("tempdir");
     let ctx = ToolContext::new(tmp.path());

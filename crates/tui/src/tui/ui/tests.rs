@@ -2167,6 +2167,8 @@ fn active_tool_status_label_summarizes_live_tool_group() {
             output: None,
             live_output: None,
             shell_task_id: None,
+            owner_agent_id: None,
+            owner_agent_name: None,
             started_at: app.turn_started_at,
             duration_ms: None,
             source: ExecSource::Assistant,
@@ -2207,6 +2209,8 @@ fn shell_live_output_update_matches_exact_task_id_only() {
         output: None,
         live_output: None,
         shell_task_id: Some("shell_a".to_string()),
+        owner_agent_id: None,
+        owner_agent_name: None,
         started_at: None,
         duration_ms: None,
         source: ExecSource::Assistant,
@@ -2219,6 +2223,8 @@ fn shell_live_output_update_matches_exact_task_id_only() {
         output: None,
         live_output: Some("previous".to_string()),
         shell_task_id: Some("shell_b".to_string()),
+        owner_agent_id: None,
+        owner_agent_name: None,
         started_at: None,
         duration_ms: None,
         source: ExecSource::Assistant,
@@ -2245,6 +2251,8 @@ fn shell_live_output_update_matches_exact_task_id_only() {
             stale: false,
             elapsed_since_output_ms: None,
             linked_task_id: None,
+            owner_agent_id: None,
+            owner_agent_name: None,
         },
     );
 
@@ -2269,6 +2277,8 @@ fn shell_live_output_update_skips_finalized_exec_cell() {
         output: Some("final output".to_string()),
         live_output: Some("old live output".to_string()),
         shell_task_id: Some("shell_a".to_string()),
+        owner_agent_id: None,
+        owner_agent_name: None,
         started_at: None,
         duration_ms: Some(10),
         source: ExecSource::Assistant,
@@ -2294,6 +2304,8 @@ fn shell_live_output_update_skips_finalized_exec_cell() {
             stale: false,
             elapsed_since_output_ms: None,
             linked_task_id: None,
+            owner_agent_id: None,
+            owner_agent_name: None,
         },
     );
 
@@ -2314,6 +2326,8 @@ fn active_tool_status_label_strips_shell_wrappers_from_ci_polling() {
             output: None,
             live_output: None,
             shell_task_id: None,
+            owner_agent_id: None,
+            owner_agent_name: None,
             started_at: app.turn_started_at,
             duration_ms: None,
             source: ExecSource::Assistant,
@@ -3856,6 +3870,8 @@ fn jobs_panel_ignores_model_reasoning_but_shows_for_real_jobs() {
         kind: crate::tui::app::TaskPanelEntryKind::ModelReasoning,
         stale: false,
         elapsed_since_output_ms: None,
+        owner_agent_id: None,
+        owner_agent_name: None,
     }];
     assert!(
         crate::tui::sidebar::sidebar_auto_idle(&mut app),
@@ -3871,6 +3887,8 @@ fn jobs_panel_ignores_model_reasoning_but_shows_for_real_jobs() {
         kind: crate::tui::app::TaskPanelEntryKind::Background,
         stale: false,
         elapsed_since_output_ms: None,
+        owner_agent_id: None,
+        owner_agent_name: None,
     });
     assert!(
         crate::tui::sidebar::sidebar_auto_idle(&mut app),
@@ -3886,6 +3904,8 @@ fn jobs_panel_ignores_model_reasoning_but_shows_for_real_jobs() {
         kind: crate::tui::app::TaskPanelEntryKind::Background,
         stale: false,
         elapsed_since_output_ms: None,
+        owner_agent_id: None,
+        owner_agent_name: None,
     });
     assert!(
         !crate::tui::sidebar::sidebar_auto_idle(&mut app),
@@ -3907,6 +3927,8 @@ fn ctrl_x_jobs_prefill_only_catches_running_shell_jobs_in_tasks_sidebar() {
         kind: TaskPanelEntryKind::Background,
         stale: false,
         elapsed_since_output_ms: None,
+        owner_agent_id: None,
+        owner_agent_name: None,
     });
 
     assert!(prefill_jobs_cancel_all_if_tasks_sidebar(&mut app));
@@ -3932,6 +3954,8 @@ fn ctrl_x_jobs_prefill_falls_through_outside_tasks_sidebar_shell_jobs() {
         kind: TaskPanelEntryKind::Background,
         stale: false,
         elapsed_since_output_ms: None,
+        owner_agent_id: None,
+        owner_agent_name: None,
     });
 
     assert!(!prefill_jobs_cancel_all_if_tasks_sidebar(&mut non_shell));
@@ -3949,6 +3973,8 @@ fn ctrl_x_jobs_prefill_falls_through_outside_tasks_sidebar_shell_jobs() {
         kind: TaskPanelEntryKind::Background,
         stale: false,
         elapsed_since_output_ms: None,
+        owner_agent_id: None,
+        owner_agent_name: None,
     });
 
     assert!(!prefill_jobs_cancel_all_if_tasks_sidebar(
@@ -6791,6 +6817,8 @@ fn terminal_pause_has_live_owner_only_for_running_exec_cells() {
             output: None,
             live_output: None,
             shell_task_id: None,
+            owner_agent_id: None,
+            owner_agent_name: None,
             started_at: Some(Instant::now()),
             duration_ms: None,
             source: ExecSource::Assistant,
@@ -9457,6 +9485,8 @@ fn render_footer_from_surfaces_background_shell_even_without_tasks_panel() {
         kind: crate::tui::app::TaskPanelEntryKind::Background,
         stale: false,
         elapsed_since_output_ms: None,
+        owner_agent_id: None,
+        owner_agent_name: None,
     }];
 
     let props = render_footer_from(&app, &[], None);
@@ -10686,6 +10716,8 @@ mod work_sidebar_projection_tests {
             kind: crate::tui::app::TaskPanelEntryKind::Background,
             stale: false,
             elapsed_since_output_ms: None,
+            owner_agent_id: None,
+            owner_agent_name: None,
         };
         assert_eq!(entry.status, "completed");
         assert_ne!(entry.status, "running");

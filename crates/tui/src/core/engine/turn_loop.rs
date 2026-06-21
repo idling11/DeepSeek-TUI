@@ -2530,6 +2530,14 @@ fn shell_completion_status_text(
     {
         let command = truncate_runtime_status_field(&event.command, 80);
         status.push_str(&format!(": {command}"));
+        if let Some(owner) = event
+            .owner_agent_name
+            .as_deref()
+            .or(event.owner_agent_id.as_deref())
+            .filter(|owner| !owner.trim().is_empty())
+        {
+            status.push_str(&format!(" (by {owner})"));
+        }
     }
 
     Some(status)
@@ -2906,6 +2914,8 @@ mod tests {
                 stdout_tail: "running tests".to_string(),
                 stderr_tail: "test failed".to_string(),
                 linked_task_id: Some("task_1".to_string()),
+                owner_agent_id: Some("agent_verifier".to_string()),
+                owner_agent_name: Some("verifier".to_string()),
             }],
             "",
         )
@@ -2913,6 +2923,7 @@ mod tests {
 
         assert!(status.contains("1 background shell job finished (1 failed)"));
         assert!(status.contains("cargo test -p codewhale-tui"));
+        assert!(status.contains("by verifier"));
         assert!(!status.contains("runtime_event"));
         assert!(!status.contains("manual exec_shell_wait polling"));
         assert!(!status.contains("stderr_tail"));

@@ -1974,6 +1974,8 @@ pub struct TaskPanelEntry {
     pub kind: TaskPanelEntryKind,
     pub stale: bool,
     pub elapsed_since_output_ms: Option<u64>,
+    pub owner_agent_id: Option<String>,
+    pub owner_agent_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

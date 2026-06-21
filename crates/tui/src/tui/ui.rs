@@ -1285,6 +1285,8 @@ async fn refresh_active_task_panel(app: &mut App, task_manager: &SharedTaskManag
                 kind: TaskPanelEntryKind::Background,
                 stale: job.stale,
                 elapsed_since_output_ms: job.elapsed_since_output_ms,
+                owner_agent_id: job.owner_agent_id,
+                owner_agent_name: job.owner_agent_name,
             });
         }
     }
@@ -1398,6 +1400,8 @@ fn active_reasoning_task_entries(app: &App) -> Vec<TaskPanelEntry> {
                 kind: TaskPanelEntryKind::ModelReasoning,
                 stale: false,
                 elapsed_since_output_ms: None,
+                owner_agent_id: None,
+                owner_agent_name: None,
             }),
             _ => None,
         })
@@ -1439,6 +1443,8 @@ fn active_rlm_task_entries(app: &App) -> Vec<TaskPanelEntry> {
                 kind: TaskPanelEntryKind::Background,
                 stale: false,
                 elapsed_since_output_ms: None,
+                owner_agent_id: None,
+                owner_agent_name: None,
             })
         })
         .collect()

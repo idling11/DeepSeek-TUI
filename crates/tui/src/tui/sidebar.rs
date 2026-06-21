@@ -1385,6 +1385,13 @@ fn push_reasoning_row_hover_texts(
 
 fn background_task_labels(task: &TaskPanelEntry, duration: &str) -> (String, String) {
     let stale_label = stale_no_output_label(task);
+    let owner_label = task
+        .owner_agent_name
+        .as_deref()
+        .or(task.owner_agent_id.as_deref())
+        .filter(|owner| !owner.trim().is_empty())
+        .map(|owner| format!("by {owner}"))
+        .unwrap_or_default();
     let status = stale_label
         .as_ref()
         .map(|label| format!("{} ({label})", task.status))
@@ -1396,6 +1403,7 @@ fn background_task_labels(task: &TaskPanelEntry, duration: &str) -> (String, Str
             format!("Bash {status} {command} {duration}"),
             compact_join([
                 format!("{} \u{00B7} Bash", task.id),
+                owner_label,
                 stale_label.unwrap_or_default(),
             ]),
         );
@@ -1408,7 +1416,11 @@ fn background_task_labels(task: &TaskPanelEntry, duration: &str) -> (String, Str
             status,
             duration
         ),
-        compact_join([task.prompt_summary.clone(), stale_label.unwrap_or_default()]),
+        compact_join([
+            task.prompt_summary.clone(),
+            owner_label,
+            stale_label.unwrap_or_default(),
+        ]),
     )
 }
 
@@ -3838,6 +3850,8 @@ mod tests {
                     output: None,
                     live_output: None,
                     shell_task_id: None,
+                    owner_agent_id: None,
+                    owner_agent_name: None,
                     started_at: None,
                     duration_ms: Some(ACTIVE_TOOL_STALE_RUNNING_ROW_TTL.as_millis() as u64 + 1),
                     source: ExecSource::Assistant,
@@ -3873,6 +3887,8 @@ mod tests {
                 output: None,
                 live_output: None,
                 shell_task_id: None,
+                owner_agent_id: None,
+                owner_agent_name: None,
                 started_at: Some(std::time::Instant::now()),
                 duration_ms: None,
                 source: ExecSource::Assistant,
@@ -3889,6 +3905,8 @@ mod tests {
             kind: TaskPanelEntryKind::Background,
             stale: false,
             elapsed_since_output_ms: None,
+            owner_agent_id: None,
+            owner_agent_name: None,
         });
 
         let text = lines_to_text(&task_panel_lines(&app, 80, 10));
@@ -3923,6 +3941,8 @@ mod tests {
             kind: TaskPanelEntryKind::Background,
             stale: false,
             elapsed_since_output_ms: None,
+            owner_agent_id: None,
+            owner_agent_name: None,
         });
 
         let text = lines_to_text(&task_panel_lines(&app, 96, 8));
@@ -3943,6 +3963,33 @@ mod tests {
     }
 
     #[test]
+    fn tasks_panel_attributes_subagent_owned_shell_jobs() {
+        let mut app = create_test_app();
+        app.task_panel.push(TaskPanelEntry {
+            id: "shell_owned".to_string(),
+            status: "running".to_string(),
+            prompt_summary: "shell: cargo test -p codewhale-tui".to_string(),
+            duration_ms: Some(2_000),
+            kind: TaskPanelEntryKind::Background,
+            stale: false,
+            elapsed_since_output_ms: None,
+            owner_agent_id: Some("agent_verifier".to_string()),
+            owner_agent_name: Some("verifier".to_string()),
+        });
+
+        let text = lines_to_text(&task_panel_lines(&app, 96, 8));
+
+        assert!(
+            text.iter().any(|line| line.contains("by verifier")),
+            "owned shell job should show sub-agent attribution: {text:?}"
+        );
+        assert!(
+            text.iter().any(|line| line.contains("shell_owned")),
+            "shell id should remain visible with attribution: {text:?}"
+        );
+    }
+
+    #[test]
     fn background_task_spinner_advances_at_readable_cadence() {
         let mut task = TaskPanelEntry {
             id: "shell_33a08c3c".to_string(),
@@ -3952,6 +3999,8 @@ mod tests {
             kind: TaskPanelEntryKind::Background,
             stale: false,
             elapsed_since_output_ms: None,
+            owner_agent_id: None,
+            owner_agent_name: None,
         };
 
         assert_eq!(background_task_spinner_prefix(&task), Some("⠋"));
@@ -3975,6 +4024,8 @@ mod tests {
             kind: TaskPanelEntryKind::ModelReasoning,
             stale: false,
             elapsed_since_output_ms: None,
+            owner_agent_id: None,
+            owner_agent_name: None,
         });
 
         let text = lines_to_text(&task_panel_lines(&app, 80, 8));
@@ -4034,6 +4085,8 @@ mod tests {
             kind: TaskPanelEntryKind::ModelReasoning,
             stale: false,
             elapsed_since_output_ms: None,
+            owner_agent_id: None,
+            owner_agent_name: None,
         });
         app.task_panel.push(TaskPanelEntry {
             id: "shell_live".to_string(),
@@ -4043,6 +4096,8 @@ mod tests {
             kind: TaskPanelEntryKind::Background,
             stale: false,
             elapsed_since_output_ms: None,
+            owner_agent_id: None,
+            owner_agent_name: None,
         });
 
         let text = lines_to_text(&task_panel_lines(&app, 96, 12));
@@ -4083,6 +4138,8 @@ mod tests {
             kind: TaskPanelEntryKind::Background,
             stale: false,
             elapsed_since_output_ms: None,
+            owner_agent_id: None,
+            owner_agent_name: None,
         });
 
         let (lines, actions) = task_panel_rows(&app, 80, 12);
@@ -4121,6 +4178,8 @@ mod tests {
             kind: TaskPanelEntryKind::Background,
             stale: true,
             elapsed_since_output_ms: Some(61_000),
+            owner_agent_id: None,
+            owner_agent_name: None,
         });
 
         let (lines, actions) = task_panel_rows(&app, 80, 12);
@@ -4162,6 +4221,8 @@ mod tests {
             kind: TaskPanelEntryKind::Background,
             stale: false,
             elapsed_since_output_ms: None,
+            owner_agent_id: None,
+            owner_agent_name: None,
         });
         app.task_panel.push(TaskPanelEntry {
             id: "task_bbb".to_string(),
@@ -4171,6 +4232,8 @@ mod tests {
             kind: TaskPanelEntryKind::Background,
             stale: false,
             elapsed_since_output_ms: None,
+            owner_agent_id: None,
+            owner_agent_name: None,
         });
 
         let (lines, actions) = task_panel_rows(&app, 96, 16);
@@ -4236,6 +4299,8 @@ mod tests {
             kind: TaskPanelEntryKind::Background,
             stale: false,
             elapsed_since_output_ms: None,
+            owner_agent_id: None,
+            owner_agent_name: None,
         });
 
         let (lines, actions) = task_panel_rows(&app, 80, 12);
@@ -4267,6 +4332,8 @@ mod tests {
                 output: None,
                 live_output: None,
                 shell_task_id: None,
+                owner_agent_id: None,
+                owner_agent_name: None,
                 started_at: Some(Instant::now()),
                 duration_ms: None,
                 source: ExecSource::Assistant,
@@ -4283,6 +4350,8 @@ mod tests {
             kind: TaskPanelEntryKind::Background,
             stale: false,
             elapsed_since_output_ms: None,
+            owner_agent_id: None,
+            owner_agent_name: None,
         });
 
         let (lines, actions) = task_panel_rows(&app, 96, 16);
@@ -4593,6 +4662,8 @@ mod tests {
                 output: Some("Lint pending\nTest pending".to_string()),
                 live_output: None,
                 shell_task_id: None,
+                owner_agent_id: None,
+                owner_agent_name: None,
                 started_at: None,
                 duration_ms: Some(15_000),
                 source: ExecSource::Assistant,
@@ -4636,6 +4707,8 @@ mod tests {
             output: Some("test failed".to_string()),
             live_output: None,
             shell_task_id: None,
+            owner_agent_id: None,
+            owner_agent_name: None,
             started_at: None,
             duration_ms: Some(1_250),
             source: ExecSource::Assistant,
@@ -4668,6 +4741,8 @@ mod tests {
             output: Some("Finished".to_string()),
             live_output: None,
             shell_task_id: None,
+            owner_agent_id: None,
+            owner_agent_name: None,
             started_at: None,
             duration_ms: Some(1_250),
             source: ExecSource::Assistant,

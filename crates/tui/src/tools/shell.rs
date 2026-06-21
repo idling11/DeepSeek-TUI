@@ -115,6 +115,10 @@ pub struct ShellJobSnapshot {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub elapsed_since_output_ms: Option<u64>,
     pub linked_task_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_agent_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_agent_name: Option<String>,
 }
 
 /// Once-only completion event for a tracked background shell job.
@@ -128,6 +132,17 @@ pub struct ShellCompletionEvent {
     pub stdout_tail: String,
     pub stderr_tail: String,
     pub linked_task_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_agent_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_agent_name: Option<String>,
+}
+
+/// Optional owner attribution for background shell work.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ShellJobOwner {
+    pub agent_id: String,
+    pub agent_name: String,
 }
 
 /// Full output view used by `/jobs show <id>`.
@@ -501,6 +516,7 @@ pub struct BackgroundShell {
     last_observed_output_len: usize,
     pub sandbox_type: SandboxType,
     pub linked_task_id: Option<String>,
+    pub owner_agent: Option<ShellJobOwner>,
     stdout_buffer: Arc<Mutex<Vec<u8>>>,
     stderr_buffer: Option<Arc<Mutex<Vec<u8>>>>,
     stdout_cursor: usize,
@@ -772,6 +788,14 @@ impl BackgroundShell {
             stale,
             elapsed_since_output_ms,
             linked_task_id: self.linked_task_id.clone(),
+            owner_agent_id: self
+                .owner_agent
+                .as_ref()
+                .map(|owner| owner.agent_id.clone()),
+            owner_agent_name: self
+                .owner_agent
+                .as_ref()
+                .map(|owner| owner.agent_name.clone()),
         }
     }
 
@@ -786,6 +810,8 @@ impl BackgroundShell {
             stdout_tail: snapshot.stdout_tail,
             stderr_tail: snapshot.stderr_tail,
             linked_task_id: snapshot.linked_task_id,
+            owner_agent_id: snapshot.owner_agent_id,
+            owner_agent_name: snapshot.owner_agent_name,
         }
     }
 
@@ -993,6 +1019,34 @@ impl ShellManager {
         policy_override: Option<ExecutionSandboxPolicy>,
         extra_env: HashMap<String, String>,
     ) -> Result<ShellResult> {
+        self.execute_with_options_env_for_owner(
+            command,
+            working_dir,
+            timeout_ms,
+            background,
+            stdin_data,
+            tty,
+            policy_override,
+            extra_env,
+            None,
+        )
+    }
+
+    /// Same as `execute_with_options_env`, with optional background-job owner
+    /// attribution for sub-agent launched jobs.
+    #[allow(clippy::too_many_arguments)]
+    pub fn execute_with_options_env_for_owner(
+        &mut self,
+        command: &str,
+        working_dir: Option<&str>,
+        timeout_ms: u64,
+        background: bool,
+        stdin_data: Option<&str>,
+        tty: bool,
+        policy_override: Option<ExecutionSandboxPolicy>,
+        extra_env: HashMap<String, String>,
+        owner_agent: Option<ShellJobOwner>,
+    ) -> Result<ShellResult> {
         // Log execution via ShellDispatcher when SHELL_DISPATCHER_LOG is set.
         crate::shell_dispatcher::ShellDispatcher::log_exec(command);
 
@@ -1011,7 +1065,14 @@ impl ShellManager {
         let exec_env = self.sandbox_manager.prepare(&spec);
 
         if background {
-            self.spawn_background_sandboxed(command, &work_dir, &exec_env, stdin_data, tty)
+            self.spawn_background_sandboxed(
+                command,
+                &work_dir,
+                &exec_env,
+                stdin_data,
+                tty,
+                owner_agent,
+            )
         } else {
             if tty {
                 return Err(anyhow!(
@@ -1358,6 +1419,7 @@ impl ShellManager {
         exec_env: &ExecEnv,
         stdin_data: Option<&str>,
         tty: bool,
+        owner_agent: Option<ShellJobOwner>,
     ) -> Result<ShellResult> {
         let task_id = format!("shell_{}", &Uuid::new_v4().to_string()[..8]);
         let started = Instant::now();
@@ -1484,6 +1546,7 @@ impl ShellManager {
             last_observed_output_len: 0,
             sandbox_type,
             linked_task_id: None,
+            owner_agent,
             stdout_buffer,
             stderr_buffer,
             stdout_cursor: 0,
@@ -1768,6 +1831,8 @@ impl ShellManager {
                 stale: true,
                 elapsed_since_output_ms: None,
                 linked_task_id,
+                owner_agent_id: None,
+                owner_agent_name: None,
             },
         );
     }
@@ -2000,6 +2065,32 @@ fn shell_network_restricted_hint<'a>(
     } else {
         None
     }
+}
+
+fn shell_job_owner_from_context(context: &ToolContext) -> Option<ShellJobOwner> {
+    let agent_id = context
+        .owner_agent_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())?;
+    let agent_name = context
+        .owner_agent_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(agent_id);
+    Some(ShellJobOwner {
+        agent_id: agent_id.to_string(),
+        agent_name: agent_name.to_string(),
+    })
+}
+
+fn attach_shell_owner_metadata(metadata: &mut serde_json::Value, context: &ToolContext) {
+    let Some(owner) = shell_job_owner_from_context(context) else {
+        return;
+    };
+    metadata["owner_agent_id"] = json!(owner.agent_id);
+    metadata["owner_agent_name"] = json!(owner.agent_name);
 }
 
 fn exec_shell_input_is_parallel_readonly(input: &serde_json::Value) -> bool {
@@ -2421,6 +2512,7 @@ impl ToolSpec for ExecShellTool {
                 "canceled": false,
                 "sandbox_backend": "opensandbox",
             });
+            attach_shell_owner_metadata(&mut metadata, context);
             attach_cargo_failure_summary(&mut metadata, command, &result);
 
             return Ok(ToolResult {
@@ -2447,7 +2539,7 @@ impl ToolSpec for ExecShellTool {
                 .shell_manager
                 .lock()
                 .map_err(|_| ToolError::execution_failed("shell manager lock poisoned"))?;
-            manager.execute_with_options_env(
+            manager.execute_with_options_env_for_owner(
                 command,
                 working_dir.as_deref(),
                 timeout_ms,
@@ -2456,6 +2548,7 @@ impl ToolSpec for ExecShellTool {
                 tty,
                 policy_override,
                 extra_env,
+                shell_job_owner_from_context(context),
             )
         } else {
             execute_foreground_via_background(
@@ -2607,6 +2700,7 @@ impl ToolSpec for ExecShellTool {
                 if provenance_hint.is_some() {
                     metadata["macos_provenance_restricted"] = json!(true);
                 }
+                attach_shell_owner_metadata(&mut metadata, context);
                 attach_cargo_failure_summary(&mut metadata, command, &result);
 
                 Ok(ToolResult {
@@ -2704,6 +2798,7 @@ fn build_shell_delta_tool_result(delta: ShellDeltaResult, context: &ToolContext)
         "command": delta.command,
         "stream_delta": true,
     });
+    attach_shell_owner_metadata(&mut metadata, context);
     attach_cargo_failure_summary(&mut metadata, &delta.command, &result);
 
     let mut tool_result = ToolResult {

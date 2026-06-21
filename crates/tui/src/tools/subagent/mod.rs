@@ -4463,9 +4463,16 @@ async fn run_subagent(
             structured_state_block: None,
         },
     );
-    let tool_registry = SubAgentToolRegistry::new(
+    let tool_registry = SubAgentToolRegistry::new_with_owner(
         runtime_for_tools,
         agent_type.clone(),
+        agent_id.clone(),
+        assignment
+            .role
+            .as_deref()
+            .filter(|role| !role.trim().is_empty())
+            .unwrap_or(agent_type.as_str())
+            .to_string(),
         allowed_tools.clone(),
         // Share the parent's todo list so child checklist updates are visible
         // in the Work sidebar live. Previously each child got a fresh isolated
@@ -6214,6 +6221,8 @@ struct SubAgentToolRegistry {
     /// the child without the parent runtime being auto-approved (#1828, #1833).
     agent_type: SubAgentType,
     can_spawn_child: bool,
+    owner_agent_id: String,
+    owner_agent_name: String,
     registry: ToolRegistry,
 }
 
@@ -6221,6 +6230,26 @@ impl SubAgentToolRegistry {
     fn new(
         runtime: SubAgentRuntime,
         agent_type: SubAgentType,
+        explicit_allowed_tools: Option<Vec<String>>,
+        todo_list: SharedTodoList,
+        plan_state: SharedPlanState,
+    ) -> Self {
+        Self::new_with_owner(
+            runtime,
+            agent_type,
+            "agent_unknown".to_string(),
+            "sub-agent".to_string(),
+            explicit_allowed_tools,
+            todo_list,
+            plan_state,
+        )
+    }
+
+    fn new_with_owner(
+        runtime: SubAgentRuntime,
+        agent_type: SubAgentType,
+        owner_agent_id: String,
+        owner_agent_name: String,
         explicit_allowed_tools: Option<Vec<String>>,
         todo_list: SharedTodoList,
         plan_state: SharedPlanState,
@@ -6252,6 +6281,8 @@ impl SubAgentToolRegistry {
             auto_approve: runtime.context.auto_approve,
             agent_type,
             can_spawn_child,
+            owner_agent_id,
+            owner_agent_name,
             registry,
         }
     }
@@ -6372,9 +6403,15 @@ impl SubAgentToolRegistry {
             }
         }
         reject_subagent_terminal_takeover(name, &input)?;
+        let context = self
+            .registry
+            .context()
+            .clone()
+            .with_owner_agent(self.owner_agent_id.clone(), self.owner_agent_name.clone());
         self.registry
-            .execute(name, input)
+            .execute_full_with_context(name, input, Some(&context))
             .await
+            .map(|result| result.content)
             .map_err(|e| anyhow!(e))
     }
 }
