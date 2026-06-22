@@ -2269,6 +2269,29 @@ fn load_sibling_permissions_rejects_symlink_file() {
 
 #[cfg(unix)]
 #[test]
+fn append_ask_rules_rejects_symlinked_permissions_file() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let config_path = dir.path().join(CONFIG_FILE_NAME);
+    let outside = dir.path().join("outside-permissions.toml");
+    let permissions_link = dir.path().join(PERMISSIONS_FILE_NAME);
+    fs::write(&config_path, "model = \"deepseek-v4-flash\"\n").expect("write config");
+    fs::write(&outside, "").expect("write outside permissions");
+    let mut store = ConfigStore::load(Some(config_path)).expect("load store before link");
+    std::os::unix::fs::symlink(&outside, &permissions_link).expect("symlink permissions");
+
+    let err = store
+        .append_ask_rules(&[ToolAskRule::exec_shell("cargo test")])
+        .expect_err("symlink permissions should fail");
+
+    assert!(format!("{err:#}").contains("must not be a symlink"));
+    assert_eq!(
+        fs::read_to_string(&outside).expect("read outside permissions"),
+        ""
+    );
+}
+
+#[cfg(unix)]
+#[test]
 fn write_config_backup_rejects_symlink_file() {
     let dir = tempfile::tempdir().expect("tempdir");
     let config_path = dir.path().join(CONFIG_FILE_NAME);

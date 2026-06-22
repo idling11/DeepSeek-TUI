@@ -848,6 +848,7 @@ dependencies = [
  "codewhale-execpolicy",
  "codewhale-secrets",
  "dirs",
+ "libc",
  "serde",
  "serde_json",
  "tempfile",

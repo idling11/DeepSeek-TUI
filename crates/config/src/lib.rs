@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::OnceLock;
 
@@ -2999,9 +2999,8 @@ impl ConfigStore {
         }
 
         let path = checked_permissions_path_for_config_path(&self.path)?;
-        let raw = if path.exists() {
-            fs::read_to_string(&path)
-                .with_context(|| format!("failed to read permissions at {}", path.display()))?
+        let raw = if checked_path_exists(&path)? {
+            read_checked_permissions_file(&path)?
         } else {
             String::new()
         };
@@ -3491,16 +3490,11 @@ pub fn resolve_permissions_path(config_path: Option<PathBuf>) -> Result<PathBuf>
 
 fn load_sibling_permissions(config_path: &Path) -> Result<PermissionsToml> {
     let permissions_path = checked_permissions_path_for_config_path(config_path)?;
-    if !permissions_path.exists() {
+    if !checked_path_exists(&permissions_path)? {
         return Ok(PermissionsToml::default());
     }
 
-    let raw = fs::read_to_string(&permissions_path).with_context(|| {
-        format!(
-            "failed to read permissions at {}",
-            permissions_path.display()
-        )
-    })?;
+    let raw = read_checked_permissions_file(&permissions_path)?;
     toml::from_str(&raw).with_context(|| {
         format!(
             "failed to parse permissions at {}",
@@ -3860,9 +3854,33 @@ fn checked_path_exists(path: &Path) -> Result<bool> {
 }
 
 fn read_checked_config_file(path: &Path) -> Result<String> {
+    read_checked_toml_file(path, "config")
+}
+
+fn read_checked_permissions_file(path: &Path) -> Result<String> {
+    read_checked_toml_file(path, "permissions")
+}
+
+fn read_checked_toml_file(path: &Path, label: &str) -> Result<String> {
     let path = normalize_config_file_path(path.to_path_buf())?;
-    fs::read_to_string(&path)
-        .with_context(|| format!("failed to read config at {}", path.display()))
+    read_string_no_follow(&path)
+        .with_context(|| format!("failed to read {label} at {}", path.display()))
+}
+
+#[cfg(unix)]
+fn read_string_no_follow(path: &Path) -> std::io::Result<String> {
+    let mut file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)?;
+    let mut raw = String::new();
+    file.read_to_string(&mut raw)?;
+    Ok(raw)
+}
+
+#[cfg(not(unix))]
+fn read_string_no_follow(path: &Path) -> std::io::Result<String> {
+    fs::read_to_string(path)
 }
 
 fn reject_path_symlink(path: &Path) -> Result<()> {
