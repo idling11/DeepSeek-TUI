@@ -10,7 +10,7 @@ description = "Hook dispatch and notifications support for CodeWhale"
 anyhow.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
-codewhale-protocol = { path = "../protocol", version = "0.8.63" }
+codewhale-protocol = { path = "../protocol", version = "0.8.64" }
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
