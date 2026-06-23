@@ -23,7 +23,7 @@ const tracksEn = [
     color: "jade",
     items: [
       { title: "Typed tool surface", note: "read, write, edit, patch, grep, shell, git, web search — plus sub-agents, RLM, and MCP" },
-      { title: "Sub-agent parallel execution", note: "agent_open / agent_eval / agent_close; up to 10 concurrent sessions with bounded result handles" },
+      { title: "Sub-agent parallel execution", note: "agent; up to 10 concurrent sessions with bounded result handles" },
       { title: "RLM batched processing", note: "Persistent sandboxed Python REPL with 1–16 cheap parallel children for long-input analysis" },
       { title: "Three operating modes", note: "Plan (read-only), Agent (default), YOLO (auto-approved); orthogonal suggest / auto / never approval" },
       { title: "Per-platform sandbox", note: "seatbelt (macOS), landlock (Linux); Windows containment via restricted tokens (limited)" },
@@ -89,7 +89,7 @@ const tracksZh = [
     color: "jade",
     items: [
       { title: "类型化工具集", note: "文件读写、编辑、补丁、搜索、Shell、Git、子 Agent、RLM、MCP——覆盖日常开发全流程" },
-      { title: "子 Agent 并行执行", note: "agent_open / agent_eval / agent_close；最多 10 个并发会话，通过 var_handle 有界读取结果" },
+      { title: "子 Agent 并行执行", note: "agent；最多 10 个并发会话，通过 var_handle 有界读取结果" },
       { title: "RLM 批量处理", note: "持久沙箱 Python REPL，支持 1–16 路廉价并行子调用，处理长文本分析" },
       { title: "三种运行模式", note: "Plan（只读）、Agent（默认）、YOLO（自动批准）；审批模式正交（建议/自动/拒绝）" },
       { title: "跨平台沙箱", note: "seatbelt（macOS）、landlock（Linux）；Windows 通过受限令牌实现基础隔离（功能有限）" },

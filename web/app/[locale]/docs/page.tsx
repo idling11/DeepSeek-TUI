@@ -151,7 +151,7 @@ export default async function DocsPage({ params }: { params: Promise<{ locale: s
                     { group: "搜索", tools: "grep_files · file_search · web_search · fetch_url" },
                     { group: "Shell", tools: "exec_shell · exec_shell_wait · exec_shell_interact" },
                     { group: "Git / 诊断 / 测试", tools: "git_status · git_diff · diagnostics · run_tests" },
-                    { group: "子 Agent", tools: "agent_open · agent_eval · agent_close —— 持久会话，并行执行，通过 var_handle 读取大结果" },
+                    { group: "子 Agent", tools: "agent —— 持久会话，并行执行；详见 docs/SUBAGENTS.md" },
                     { group: "递归 LM (RLM)", tools: "rlm_open · rlm_eval · rlm_configure · rlm_close —— 沙箱 Python REPL，内置 peek/search/chunk/sub_query_batch 等辅助函数" },
                     { group: "MCP", tools: "mcp_<server>_<tool>——从 ~/.codewhale/mcp.json 自动注册" },
                   ].map((row) => (
@@ -447,7 +447,7 @@ command = "~/.codewhale/hooks/pre.sh"        # / message_submit / mode_change / 
                     { group: "Search", tools: "grep_files · file_search · web_search · fetch_url" },
                     { group: "Shell", tools: "exec_shell · exec_shell_wait · exec_shell_interact" },
                     { group: "Git / diag / test", tools: "git_status · git_diff · diagnostics · run_tests" },
-                    { group: "Sub-agents", tools: "agent_open · agent_eval · agent_close — persistent sessions, parallel execution, bounded result retrieval via var_handle" },
+                    { group: "Sub-agents", tools: "agent — persistent sessions, parallel execution; see docs/SUBAGENTS.md" },
                     { group: "Recursive LM (RLM)", tools: "rlm_open · rlm_eval · rlm_configure · rlm_close — sandboxed Python REPL with peek/search/chunk/sub_query_batch helpers" },
                     { group: "MCP", tools: "mcp_<server>_<tool> — auto-registered from ~/.codewhale/mcp.json" },
                   ].map((row) => (
