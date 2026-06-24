@@ -132,7 +132,7 @@ impl RouteResolver {
         } else {
             classify(provider_kind)
         };
-        let (wire_model_id, canonical_model, endpoint_key, limits) = if is_auto {
+        let (wire_model_id, canonical_model, endpoint_key, limits, pricing) = if is_auto {
             default_offering.map_or_else(
                 || {
                     (
@@ -140,6 +140,9 @@ impl RouteResolver {
                         None,
                         "chat".to_string(),
                         RouteLimits::default(),
+                        // No offering in hand on the default branch: pricing is
+                        // honestly unknown (#3085), never a fabricated zero.
+                        PricingSku::UnknownOrStale,
                     )
                 },
                 |offering| {
@@ -148,6 +151,8 @@ impl RouteResolver {
                         offering.canonical_model.clone(),
                         offering.endpoint_key.clone(),
                         offering.limits,
+                        // Matched offering: carry its sourced pricing meter.
+                        offering.pricing.clone(),
                     )
                 },
             )
@@ -164,10 +169,16 @@ impl RouteResolver {
             protocol: descriptor.protocol(),
         };
 
-        let validation = ValidationReport {
-            ok: true,
-            messages: Vec::new(),
-        };
+        // Advisory validation (#1519): a non-loopback `http://` endpoint sends
+        // credentials in plaintext. This is advisory, not a hard fail, so
+        // `ok` stays true and local `http://localhost` runtimes (Ollama / vLLM /
+        // SGLang defaults) stay clean.
+        let mut messages = Vec::new();
+        if endpoint_uses_insecure_http(&endpoint.base_url) {
+            messages
+                .push("endpoint uses insecure http:// (credentials sent in plaintext)".to_string());
+        }
+        let validation = ValidationReport { ok: true, messages };
 
         Ok(ReadyRouteCandidate::new(
             provider_id,
@@ -179,7 +190,10 @@ impl RouteResolver {
             ResolvedAuthSource::Missing,
             descriptor.protocol(),
             limits,
-            Some(PricingSku::UnknownOrStale),
+            // #3085: honest pricing projected from the matched offering (the
+            // catalog layer maps sourced cost → SKU); `UnknownOrStale` whenever
+            // no offering was matched or the offering carried no price.
+            Some(pricing),
             validation,
         ))
     }
@@ -191,7 +205,16 @@ impl RouteResolver {
         provider_id: &ProviderId,
         logical_model: &LogicalModelRef,
         class: ProviderClass,
-    ) -> Result<(WireModelId, Option<ModelId>, String, RouteLimits), RouteError> {
+    ) -> Result<
+        (
+            WireModelId,
+            Option<ModelId>,
+            String,
+            RouteLimits,
+            PricingSku,
+        ),
+        RouteError,
+    > {
         let raw = logical_model.raw();
 
         // Try to match a catalog offering owned by THIS provider, either by
@@ -212,6 +235,8 @@ impl RouteResolver {
                     offering.canonical_model.clone(),
                     offering.endpoint_key.clone(),
                     offering.limits,
+                    // Matched offering: carry its sourced pricing meter (#3085).
+                    offering.pricing.clone(),
                 ));
             }
         }
@@ -235,23 +260,27 @@ impl RouteResolver {
                     });
                 }
                 // A bare, unknown model on a strict direct provider is passed
-                // through verbatim (the provider validates it server-side).
+                // through verbatim (the provider validates it server-side). No
+                // offering matched, so pricing is honestly unknown (#3085).
                 Ok((
                     WireModelId::from(raw),
                     None,
                     "chat".to_string(),
                     RouteLimits::default(),
+                    PricingSku::UnknownOrStale,
                 ))
             }
             // Aggregators, local runtimes, and custom OpenAI-compatible
             // endpoints legitimately accept arbitrary / prefixed ids verbatim.
             ProviderClass::Aggregator | ProviderClass::LocalOrCustom => {
                 let _ = provider_kind;
+                // No offering matched: pricing is honestly unknown (#3085).
                 Ok((
                     WireModelId::from(raw),
                     None,
                     "chat".to_string(),
                     RouteLimits::default(),
+                    PricingSku::UnknownOrStale,
                 ))
             }
         }
@@ -349,4 +378,56 @@ fn normalize_route_base_url(base_url: &str) -> String {
         return format!("{scheme}://{}{path}", authority.to_ascii_lowercase());
     }
     trimmed.to_ascii_lowercase()
+}
+
+/// True when `base_url` is an `http://` endpoint whose host is NOT loopback
+/// (#1519). Such an endpoint sends credentials in plaintext over the network;
+/// loopback (`localhost` / `127.0.0.1` / `::1`) is exempt because local
+/// runtimes (Ollama / vLLM / SGLang) default to plain `http://localhost`.
+fn endpoint_uses_insecure_http(base_url: &str) -> bool {
+    let trimmed = base_url.trim();
+    // Scheme match is case-insensitive but must be `http`, not `https`.
+    let Some(rest) = strip_http_scheme(trimmed) else {
+        return false;
+    };
+    !is_loopback_host(host_of_authority(rest))
+}
+
+/// Strip a leading case-insensitive `http://` scheme, returning the remainder.
+/// Returns `None` for any other scheme (including `https://`) or no scheme.
+fn strip_http_scheme(base_url: &str) -> Option<&str> {
+    let idx = base_url.find("://")?;
+    let (scheme, rest) = base_url.split_at(idx);
+    if scheme.eq_ignore_ascii_case("http") {
+        Some(&rest[3..])
+    } else {
+        None
+    }
+}
+
+/// Extract the bare host from an authority+path string: take the authority up
+/// to the first `/`, drop any `user@` userinfo and `:port` suffix, and unwrap
+/// `[..]` IPv6 brackets.
+fn host_of_authority(rest: &str) -> &str {
+    let authority = rest.split('/').next().unwrap_or(rest);
+    // Drop userinfo (`user:pass@host`) if present.
+    let authority = authority.rsplit('@').next().unwrap_or(authority);
+    if let Some(inner) = authority.strip_prefix('[') {
+        // Bracketed IPv6 literal: host is everything up to the closing bracket.
+        return inner.split(']').next().unwrap_or(inner);
+    }
+    // Otherwise strip a trailing `:port`.
+    authority.split(':').next().unwrap_or(authority)
+}
+
+/// Whether `host` is an IPv4/IPv6/name loopback address.
+fn is_loopback_host(host: &str) -> bool {
+    let host = host.trim().trim_matches(|c| c == '[' || c == ']');
+    host.eq_ignore_ascii_case("localhost")
+        || host == "127.0.0.1"
+        || host == "::1"
+        // Any 127.0.0.0/8 address is loopback.
+        || host
+            .strip_prefix("127.")
+            .is_some_and(|_| host.split('.').count() == 4)
 }

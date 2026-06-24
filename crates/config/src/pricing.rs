@@ -21,6 +21,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::catalog::{CatalogOffering, CatalogSource};
+use crate::models_dev::ModelsDevCost;
 use crate::route::PricingSku;
 
 /// Billing currency for a pricing row. Models.dev publishes USD per-million
@@ -215,6 +216,30 @@ impl OfferingPricing {
 pub fn route_pricing_sku(offering: &CatalogOffering) -> PricingSku {
     OfferingPricing::from_catalog_offering(offering)
         .map_or(PricingSku::UnknownOrStale, |pricing| pricing.to_route_sku())
+}
+
+/// The honest route-facing pricing meter for a raw Models.dev `cost` block.
+///
+/// Same honesty rule as [`route_pricing_sku`], but for callers that hold a
+/// [`ModelsDevCost`] directly (the route-offering builders in
+/// [`crate::models_dev`]) rather than a full [`CatalogOffering`]. An absent or
+/// concretely-empty cost, or a cache-only cost, yields
+/// [`PricingSku::UnknownOrStale`]; only a usable input/output rate yields
+/// [`PricingSku::Token`].
+#[must_use]
+pub(crate) fn route_pricing_sku_from_cost(cost: Option<&ModelsDevCost>) -> PricingSku {
+    let Some(cost) = cost else {
+        return PricingSku::UnknownOrStale;
+    };
+    if cost.input.is_none() && cost.output.is_none() {
+        // No input/output rate: a cache-only or empty cost would render as a
+        // rate-less `Token` at the route layer, so it stays honestly unknown.
+        return PricingSku::UnknownOrStale;
+    }
+    PricingSku::Token {
+        input_per_mtok: cost.input,
+        output_per_mtok: cost.output,
+    }
 }
 
 fn provenance_from_source(source: &CatalogSource) -> PricingProvenance {

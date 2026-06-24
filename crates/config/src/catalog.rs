@@ -112,7 +112,11 @@ impl CatalogOffering {
     /// Project the minimal routing identity the resolver consumes.
     ///
     /// The catalog deliberately carries richer facts than routing needs; this
-    /// drops them so `RouteResolver::from_offerings` stays the single seam.
+    /// drops most of them so `RouteResolver::from_offerings` stays the single
+    /// seam. The route-facing pricing meter is the exception: it is projected
+    /// here (where the offering's sourced `cost` is in scope) via
+    /// [`crate::pricing::route_pricing_sku`] so a resolved candidate can carry
+    /// honest pricing without the route layer ever seeing raw cost (#3085).
     #[must_use]
     pub fn to_offering(&self) -> ProviderModelOffering {
         ProviderModelOffering {
@@ -126,6 +130,7 @@ impl CatalogOffering {
                 .as_ref()
                 .map(RouteLimits::from)
                 .unwrap_or_default(),
+            pricing: crate::pricing::route_pricing_sku(self),
         }
     }
 

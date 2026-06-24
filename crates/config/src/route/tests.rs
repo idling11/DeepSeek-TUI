@@ -540,3 +540,158 @@ fn resolver_protocol_matches_descriptor_for_every_provider() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// #3085: honest pricing on resolved candidates.
+// ---------------------------------------------------------------------------
+
+/// A resolver whose single offering is a DeepSeek-priced catalog row, projected
+/// through the wired `CatalogOffering::to_offering` pricing seam.
+fn priced_deepseek_resolver() -> RouteResolver {
+    use crate::catalog::{CatalogOffering, CatalogSource};
+    use crate::models_dev::ModelsDevCost;
+
+    let priced = CatalogOffering {
+        provider: "deepseek".into(),
+        wire_model_id: "deepseek-v4-pro".into(),
+        canonical_model: Some("deepseek-v4-pro".into()),
+        endpoint_key: "chat".into(),
+        default_for_provider: true,
+        cost: Some(ModelsDevCost {
+            input: Some(0.28),
+            output: Some(0.42),
+            cache_read: Some(0.028),
+            cache_write: None,
+        }),
+        source: CatalogSource::Bundled,
+        ..Default::default()
+    };
+    RouteResolver::from_offerings(vec![priced.to_offering()])
+}
+
+#[test]
+fn priced_offering_yields_token_pricing_sku() {
+    use super::candidate::PricingSku;
+
+    let r = priced_deepseek_resolver();
+    let out = r
+        .resolve(&req(Some(ProviderKind::Deepseek), Some("deepseek-v4-pro")))
+        .expect("priced DeepSeek route should resolve");
+
+    match out.pricing {
+        Some(PricingSku::Token {
+            input_per_mtok,
+            output_per_mtok,
+        }) => {
+            assert_eq!(input_per_mtok, Some(0.28));
+            assert_eq!(output_per_mtok, Some(0.42));
+        }
+        other => panic!("expected Some(Token), got {other:?}"),
+    }
+}
+
+#[test]
+fn unpriced_offering_stays_unknown() {
+    use super::candidate::PricingSku;
+
+    // The bundled seam (`RouteResolver::new`) carries no sourced cost, so a
+    // matched offering must surface honest UnknownOrStale, never a fabricated
+    // zero price (#2608 / #3085 honesty rule).
+    let r = RouteResolver::new();
+    let out = r
+        .resolve(&req(Some(ProviderKind::Deepseek), Some("deepseek-v4-pro")))
+        .expect("bundled DeepSeek route should resolve");
+    assert!(
+        matches!(out.pricing, Some(PricingSku::UnknownOrStale)),
+        "bundled offering carries no price → UnknownOrStale, got {:?}",
+        out.pricing
+    );
+
+    // A pass-through route with no matched offering is likewise unknown.
+    let passthrough = r
+        .resolve(&req(Some(ProviderKind::Ollama), Some("my-local:7b")))
+        .expect("local passthrough should resolve");
+    assert!(matches!(
+        passthrough.pricing,
+        Some(PricingSku::UnknownOrStale)
+    ));
+}
+
+// ---------------------------------------------------------------------------
+// #1519: advisory insecure-http warning, loopback-exempt.
+// ---------------------------------------------------------------------------
+
+/// Build a request with an explicit base-URL override.
+fn req_with_base(provider: ProviderKind, model: &str, base_url: &str) -> RouteRequest {
+    RouteRequest {
+        explicit_provider: Some(provider),
+        model_selector: Some(LogicalModelRef::from(model)),
+        saved_provider_model: None,
+        base_url_override: Some(base_url.to_string()),
+    }
+}
+
+#[test]
+fn http_custom_endpoint_emits_insecure_warning() {
+    let r = RouteResolver::new();
+    let out = r
+        .resolve(&req_with_base(
+            ProviderKind::Openai,
+            "gpt-whatever",
+            "http://example.com/v1",
+        ))
+        .expect("custom http endpoint should still resolve");
+
+    // Advisory only: the route stays usable.
+    assert!(
+        out.validation.ok,
+        "insecure http is advisory, not a hard fail"
+    );
+    assert!(
+        out.validation
+            .messages
+            .iter()
+            .any(|m| m.contains("insecure http")),
+        "expected an insecure-http advisory, got {:?}",
+        out.validation.messages
+    );
+}
+
+#[test]
+fn loopback_http_endpoint_does_not_warn() {
+    let r = RouteResolver::new();
+    // localhost, 127.0.0.1, and ::1 are all loopback and must stay clean.
+    for base in [
+        "http://localhost:11434/v1",
+        "http://127.0.0.1:8000/v1",
+        "http://[::1]:8080/v1",
+    ] {
+        let out = r
+            .resolve(&req_with_base(ProviderKind::Ollama, "my-local:7b", base))
+            .unwrap_or_else(|e| panic!("loopback route {base} should resolve: {e}"));
+        assert!(out.validation.ok);
+        assert!(
+            out.validation.messages.is_empty(),
+            "loopback {base} must not warn, got {:?}",
+            out.validation.messages
+        );
+    }
+}
+
+#[test]
+fn https_endpoint_has_no_warning() {
+    let r = RouteResolver::new();
+    let out = r
+        .resolve(&req_with_base(
+            ProviderKind::Openai,
+            "gpt-whatever",
+            "https://example.com/v1",
+        ))
+        .expect("https endpoint should resolve");
+    assert!(out.validation.ok);
+    assert!(
+        out.validation.messages.is_empty(),
+        "https must not warn, got {:?}",
+        out.validation.messages
+    );
+}

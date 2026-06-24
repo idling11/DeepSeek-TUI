@@ -63,7 +63,11 @@ pub enum ResolvedAuthSource {
 /// Pricing/quota class for the resolved route.
 ///
 /// Carries only coarse, non-sensitive shape; never secrets or account ids.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// `PartialEq` (but not `Eq`: the `Token` rates are `f64`) lets offerings and
+/// candidates be compared in tests and lets
+/// [`super::offering::ProviderModelOffering`] carry a pricing meter.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PricingSku {
     /// Per-token pricing.

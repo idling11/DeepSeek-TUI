@@ -94,6 +94,7 @@ impl ModelsDevCatalog {
                 .as_ref()
                 .map(RouteLimits::from)
                 .unwrap_or_default(),
+            pricing: crate::pricing::route_pricing_sku_from_cost(model.cost.as_ref()),
         })
     }
 
@@ -123,6 +124,7 @@ impl ModelsDevCatalog {
                         .as_ref()
                         .map(RouteLimits::from)
                         .unwrap_or_default(),
+                    pricing: crate::pricing::route_pricing_sku_from_cost(model.cost.as_ref()),
                 })
                 .collect(),
         )

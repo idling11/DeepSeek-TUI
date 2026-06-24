@@ -13,6 +13,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::candidate::PricingSku;
 use super::ids::{ModelId, ProviderId, WireModelId};
 
 /// Token limits for one resolved route/offering.
@@ -42,7 +43,10 @@ impl RouteLimits {
 }
 
 /// One provider's way of serving a (possibly canonical) model.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// `Eq` is intentionally NOT derived: [`PricingSku::Token`] carries `f64` rates,
+/// so the offering is only `PartialEq`. No caller keys a set/map on offerings.
+#[derive(Debug, Clone, PartialEq)]
 pub struct ProviderModelOffering {
     /// Provider serving this offering.
     pub provider: ProviderId,
@@ -56,6 +60,14 @@ pub struct ProviderModelOffering {
     pub default_for_provider: bool,
     /// Provider/offering-scoped token limits, when known.
     pub limits: RouteLimits,
+    /// Coarse route-facing pricing meter for this offering (#3085).
+    ///
+    /// Projected from the offering's sourced cost at the layer that owns it
+    /// (`CatalogOffering::to_offering` → [`crate::pricing::route_pricing_sku`]).
+    /// The resolver carries this verbatim onto the candidate; it is
+    /// [`PricingSku::UnknownOrStale`] whenever no price was sourced — never a
+    /// fabricated zero (the #2608 / #3085 honesty rule).
+    pub pricing: PricingSku,
 }
 
 /// A static, lazily-materialized seam catalog.
@@ -119,6 +131,9 @@ pub fn bundled_offerings() -> Vec<ProviderModelOffering> {
             endpoint_key: seed.endpoint_key.to_string(),
             default_for_provider: seed.default_for_provider,
             limits: RouteLimits::default(),
+            // The bundled seam carries no sourced cost, so pricing is honestly
+            // unknown here (never a fabricated zero).
+            pricing: PricingSku::UnknownOrStale,
         })
         .collect()
 }
