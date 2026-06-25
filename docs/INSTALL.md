@@ -42,7 +42,7 @@ v0.8.8 onward; Linux RISC-V starts with the first release after v0.8.47.
 ² Provided your toolchain can compile a recent Rust workspace; see
   [Build from source](#7-build-from-source) below.
 
-The Linux **x64** release assets are **static (musl) builds** as of v0.8.63.
+The Linux **x64** release assets are **static (musl) builds** as of v0.8.65.
 They have no glibc dependency and run on any x86_64 Linux, including Ubuntu
 22.04, Debian stable, RHEL/CentOS, and Alpine/musl. SQLite is bundled into the
 binary through `rusqlite`, so no separate `libsqlite3` runtime package is needed.
@@ -56,7 +56,7 @@ builds. They dynamically link normal Linux runtime libraries such as
 
 This floor applies only to the **GNU libc** assets (arm64, riscv64). The static
 x64 (musl) asset has no `GLIBC_*` symbols, so it passes the install preflight
-and runs on older systems without error. In the current v0.8.63 release lane,
+and runs on older systems without error. In the current v0.8.65 release lane,
 the GNU assets are built on Ubuntu 24.04 and can require `GLIBC_2.39`. Ubuntu
 22.04 ships glibc 2.35, so those arm64/riscv64 binaries fail with errors such as:
 
