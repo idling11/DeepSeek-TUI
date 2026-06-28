@@ -4,7 +4,7 @@
 
 Rust 製の TUI と CLI、25 のプロバイダ。DeepSeek、OpenRouter、Hugging Face、DeepInfra、ローカルの vLLM/SGLang/Ollama を第一級のルートとして扱い、手元にあるのが Anthropic Claude や OpenAI のキーなら、それらの API もネイティブに扱えます。承認ゲート付きツール、OS サンドボックス、そして全ターンを巻き戻せる `/restore`。
 
-[English README](README.md) · [简体中文 README](README.zh-CN.md) · [Tiếng Việt README](README.vi.md) · [codewhale.net](https://codewhale.net/) · [Install guide](docs/INSTALL.md) · [Provider registry](docs/PROVIDERS.md) · [Changelog](CHANGELOG.md)
+[English README](README.md) · [简体中文 README](README.zh-CN.md) · [Tiếng Việt README](README.vi.md) · [한국어 README](README.ko-KR.md) · [codewhale.net](https://codewhale.net/) · [Install guide](docs/INSTALL.md) · [Provider registry](docs/PROVIDERS.md) · [Changelog](CHANGELOG.md)
 
 [![CI](https://github.com/Hmbown/CodeWhale/actions/workflows/ci.yml/badge.svg)](https://github.com/Hmbown/CodeWhale/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/codewhale-cli?label=crates.io)](https://crates.io/crates/codewhale-cli)

@@ -7,7 +7,7 @@ DeepInfra 以及本地 vLLM/SGLang/Ollama 都是一等路由；当你手里是 A
 或 OpenAI 的 key 时，CodeWhale 也以原生协议直连。工具经审批放行、操作系统级沙箱，
 每一轮都可用 `/restore` 回滚。
 
-[English README](README.md) · [日本語 README](README.ja-JP.md) · [Tiếng Việt README](README.vi.md) · [codewhale.net](https://codewhale.net/) · [安装指南](docs/INSTALL.md) · [Provider 注册表](docs/PROVIDERS.md) · [更新日志](CHANGELOG.md)
+[English README](README.md) · [日本語 README](README.ja-JP.md) · [Tiếng Việt README](README.vi.md) · [한국어 README](README.ko-KR.md) · [codewhale.net](https://codewhale.net/) · [安装指南](docs/INSTALL.md) · [Provider 注册表](docs/PROVIDERS.md) · [更新日志](CHANGELOG.md)
 
 [![CI](https://github.com/Hmbown/CodeWhale/actions/workflows/ci.yml/badge.svg)](https://github.com/Hmbown/CodeWhale/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/codewhale-cli?label=crates.io)](https://crates.io/crates/codewhale-cli)
