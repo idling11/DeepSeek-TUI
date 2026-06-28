@@ -510,9 +510,13 @@ fn enforce_lru_capacity_does_not_loop_when_all_threads_are_active() {
 }
 
 #[test]
-fn approval_decision_matches_auto_approve_and_trust_mode() {
+fn approval_decision_keeps_trust_mode_out_of_tool_approval() {
     assert!(matches!(
         RuntimeThreadManager::approval_decision(false, false, false),
+        RuntimeApprovalDecision::DenyTool
+    ));
+    assert!(matches!(
+        RuntimeThreadManager::approval_decision(false, true, false),
         RuntimeApprovalDecision::DenyTool
     ));
     assert!(matches!(
@@ -2290,6 +2294,10 @@ fn summarize_text_truncates() {
 fn approval_decision_requires_auto_approve_and_trust_for_full_access() {
     assert_eq!(
         RuntimeThreadManager::approval_decision(false, false, false),
+        RuntimeApprovalDecision::DenyTool
+    );
+    assert_eq!(
+        RuntimeThreadManager::approval_decision(false, true, false),
         RuntimeApprovalDecision::DenyTool
     );
     assert_eq!(

@@ -3293,7 +3293,7 @@ impl RuntimeThreadManager {
                         continue;
                     };
 
-                    if auto_approve || trust_mode {
+                    if auto_approve {
                         let auto_decision =
                             Self::approval_decision(auto_approve, trust_mode, false);
                         let (dec_str, approved) = match auto_decision {

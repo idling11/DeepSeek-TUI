@@ -1105,8 +1105,9 @@ struct ModeSessionPrefs {
 ///
 /// This is a pure projection of `(mode, prefs)` — see [`base_policy_for_mode`].
 /// The App keeps `allow_shell`/`trust_mode`/`approval_mode`/`yolo` as derived
-/// mirrors of these values so the rest of the crate can keep reading the plain
-/// booleans without a type migration.
+/// mirrors of these values so the rest of the crate can keep reading the
+/// existing fields without a type migration. YOLO authority is derived from
+/// `ApprovalMode::Bypass`, not carried as a separate mode-table knob (#3736).
 #[derive(Debug, Clone, Copy)]
 struct EffectiveModePolicy {
     #[allow(dead_code)]
@@ -1114,8 +1115,6 @@ struct EffectiveModePolicy {
     allow_shell: bool,
     trust_mode: bool,
     approval_mode: ApprovalMode,
-    /// Whether tool calls auto-approve (YOLO authority). Mirrors `self.yolo`.
-    auto_approve: bool,
 }
 
 /// Resolve a mode's effective permission policy from the durable Agent baseline.
@@ -1135,28 +1134,24 @@ fn base_policy_for_mode(mode: AppMode, prefs: &ModeSessionPrefs) -> EffectiveMod
             allow_shell: false,
             trust_mode: false,
             approval_mode: ApprovalMode::Suggest,
-            auto_approve: false,
         },
         AppMode::Agent => EffectiveModePolicy {
             mode,
             allow_shell: prefs.agent_allow_shell,
             trust_mode: prefs.agent_trust_mode,
             approval_mode: prefs.agent_approval_mode,
-            auto_approve: false,
         },
         AppMode::Auto => EffectiveModePolicy {
             mode,
             allow_shell: true,
             trust_mode: false,
             approval_mode: ApprovalMode::Auto,
-            auto_approve: false,
         },
         AppMode::Yolo => EffectiveModePolicy {
             mode,
             allow_shell: true,
             trust_mode: true,
             approval_mode: ApprovalMode::Bypass,
-            auto_approve: true,
         },
     }
 }
@@ -2921,7 +2916,7 @@ impl App {
         self.allow_shell = policy.allow_shell;
         self.trust_mode = policy.trust_mode;
         self.approval_mode = policy.approval_mode;
-        self.yolo = policy.auto_approve;
+        self.yolo = matches!(policy.approval_mode, ApprovalMode::Bypass);
 
         if mode != AppMode::Plan {
             self.plan_prompt_pending = false;

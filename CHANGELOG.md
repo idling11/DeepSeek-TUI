@@ -55,6 +55,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed runtime API approval handling so workspace trust no longer auto-resolves
+  ordinary tool approvals; trust now only participates in full-access retry
+  decisions while YOLO/auto-approve remains the approval bypass (#3736).
 - Fixed Plan/request-input modal surfaces so popup interiors are painted
   opaquely, and compacted the Plan confirmation footer so action choices stay
   visible on narrow terminals instead of truncating (#3732).
