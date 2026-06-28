@@ -7,7 +7,6 @@
 //! fall-through behaviour.
 
 mod groups;
-mod plugins;
 pub mod traits;
 pub mod user_commands;
 pub mod user_registry;
@@ -547,6 +546,10 @@ mod tests {
         assert!(message.contains("Requested relay focus: next hand"));
     }
 
+    /// AT-008: No built-in command name or alias is registered twice,
+    /// and no built-in alias collides with another command's canonical name.
+    /// This test iterates every command from `command_infos()` (all 9 groups)
+    /// and asserts uniqueness across the full set of names and aliases.
     #[test]
     fn command_registry_has_unique_names_and_aliases() {
         let mut names = std::collections::BTreeSet::new();
@@ -568,6 +571,106 @@ mod tests {
                 assert!(aliases.insert(*alias), "duplicate command alias /{alias}");
             }
         }
+    }
+
+    /// AT-009: Command ownership contract — top-level `commands/mod.rs` only
+    /// registers groups (`groups::all_command_groups()`), each group owns its
+    /// `commands()` list, and every command has valid metadata.
+    ///
+    /// Config and debug groups are documented permanent exceptions: they keep
+    /// group-local `CommandInfo` statics and `dispatch()` in `mod.rs` rather
+    /// than extracting every command into a focused module. This is accepted
+    /// final structure per FEAT-008 §3.2.
+    ///
+    /// Enforcement strategy:
+    /// - Exactly 9 source-verified groups (from `groups/mod.rs`)
+    /// - Each group owns its commands() list
+    /// - Config and debug exceptions verified within their specific groups by
+    ///   identifying the group through its first command ("config" and "tokens")
+    /// - Not circular: the group-iterated command count is a consistency check;
+    ///   the primary enforcement is exact group count + per-group non-empty + valid metadata
+    #[test]
+    fn command_ownership_contract_is_enforced() {
+        let groups = groups::all_command_groups();
+
+        // AT-009 primary: exactly 9 groups matching groups/mod.rs
+        assert_eq!(
+            groups.len(),
+            9,
+            "expected exactly 9 command groups (core, session, config, debug, \
+             project, skills, memory, plugins, utility), got {}",
+            groups.len()
+        );
+
+        let mut total_commands = 0;
+        let mut has_config = false;
+        let mut has_debug = false;
+        for group in &groups {
+            let commands = group.commands();
+            assert!(
+                !commands.is_empty(),
+                "each group must have at least one command"
+            );
+            for cmd in &commands {
+                let info = cmd.info();
+                assert!(!info.name.is_empty(), "command name must not be empty");
+                assert!(
+                    info.name
+                        .chars()
+                        .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit()),
+                    "/{} command names must be lowercase ASCII",
+                    info.name
+                );
+                let usage_prefix = format!("/{}", info.name);
+                assert!(
+                    info.usage.starts_with(&usage_prefix),
+                    "/{} usage must start with /{{name}}, got {:?}",
+                    info.name,
+                    info.usage
+                );
+            }
+            total_commands += commands.len();
+
+            // Identify config and debug groups by their command content to
+            // verify permanent-exception counts within the correct group.
+            if commands.iter().any(|c| c.info().name == "config") {
+                has_config = true;
+                assert_eq!(
+                    commands.len(),
+                    11,
+                    "config group (group-local metadata exception) expected \
+                     exactly 11 commands, got {}",
+                    commands.len()
+                );
+            }
+            if commands.iter().any(|c| c.info().name == "tokens") {
+                has_debug = true;
+                assert_eq!(
+                    commands.len(),
+                    11,
+                    "debug group (group-local metadata exception) expected \
+                     exactly 11 commands, got {}",
+                    commands.len()
+                );
+            }
+        }
+
+        // Config and debug groups must be found and verified by content identity
+        assert!(
+            has_config,
+            "config group not found (expected first command: /config)"
+        );
+        assert!(
+            has_debug,
+            "debug group not found (expected first command: /tokens)"
+        );
+
+        // Consistency: group-iterated command count must match registry
+        assert_eq!(
+            total_commands,
+            command_infos().len(),
+            "group-iterated command count must match registry infos count"
+        );
     }
 
     #[test]

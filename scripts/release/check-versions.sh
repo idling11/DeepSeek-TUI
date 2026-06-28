@@ -168,7 +168,7 @@ if [[ "${facts_version}" != "${workspace_version}" ]]; then
 fi
 
 # 9) README install-tag examples point at the current release.
-for readme in README.md README.zh-CN.md README.ja-JP.md README.vi.md; do
+for readme in README.md README.zh-CN.md README.ja-JP.md README.vi.md README.ko-KR.md; do
   stale_tags="$(grep -nE -- "--tag v[0-9]+\.[0-9]+\.[0-9]+" "${readme}" | grep -v -- "--tag v${workspace_version}" || true)"
   if [[ -n "${stale_tags}" ]]; then
     echo "::error::${readme} has install examples pinned to an old tag (want v${workspace_version}):" >&2

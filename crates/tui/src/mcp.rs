@@ -2825,7 +2825,58 @@ pub fn load_config_with_workspace(global_path: &Path, workspace: &Path) -> Resul
         }
     }
     merged.servers.extend(project.servers);
+
+    merged = merge_plugin_mcp_servers(merged)?;
+
     Ok(merged)
+}
+
+fn merge_plugin_mcp_servers(config: McpConfig) -> Result<McpConfig> {
+    let plugins = crate::plugins::try_with_registry(|r| {
+        r.list_enabled()
+            .into_iter()
+            .map(|(name, plugin)| (name.clone(), plugin.clone()))
+            .collect::<Vec<_>>()
+    })
+    .unwrap_or_default();
+
+    merge_plugin_mcp_servers_from_plugins(config, plugins)
+}
+
+fn merge_plugin_mcp_servers_from_plugins(
+    mut config: McpConfig,
+    plugins: impl IntoIterator<Item = (String, crate::plugins::manifest::LoadedPlugin)>,
+) -> Result<McpConfig> {
+    for (plugin_name, plugin) in plugins {
+        if let Some(mcp_servers) = &plugin.manifest.mcp_servers {
+            for (server_name, server_config) in mcp_servers {
+                let qualified_name = format!("{}-{}", plugin_name, server_name);
+                let mut server_config = server_config.clone();
+
+                if server_config.command.is_some() && server_config.url.is_none() {
+                    server_config.cwd = Some(resolve_plugin_mcp_cwd(
+                        &plugin.base_path,
+                        server_config.cwd.as_deref(),
+                    )?);
+                }
+
+                config.servers.insert(qualified_name, server_config);
+            }
+        }
+    }
+
+    Ok(config)
+}
+
+fn resolve_plugin_mcp_cwd(plugin_path: &Path, cwd: Option<&Path>) -> Result<PathBuf> {
+    let cwd = match cwd {
+        Some(cwd) if cwd.is_relative() => normalize_path_components(&plugin_path.join(cwd)),
+        Some(cwd) => normalize_path_components(cwd),
+        None => plugin_path.to_path_buf(),
+    };
+    Ok(cwd
+        .canonicalize()
+        .unwrap_or_else(|_| normalize_path_components(&cwd)))
 }
 
 fn workspace_allows_project_mcp_config(workspace: &Path) -> bool {
@@ -2975,6 +3026,31 @@ fn mcp_template_json() -> Result<String> {
         McpServerConfig {
             command: Some("node".to_string()),
             args: vec!["./path/to/your-mcp-server.js".to_string()],
+            env: HashMap::new(),
+            cwd: None,
+            url: None,
+            transport: None,
+            connect_timeout: None,
+            execute_timeout: None,
+            read_timeout: None,
+            disabled: true,
+            enabled: true,
+            required: false,
+            enabled_tools: Vec::new(),
+            disabled_tools: Vec::new(),
+            headers: HashMap::new(),
+            env_headers: HashMap::new(),
+            bearer_token_env_var: None,
+            scopes: Vec::new(),
+            oauth: None,
+            oauth_resource: None,
+        },
+    );
+    cfg.servers.insert(
+        "moraine-mcp".to_string(),
+        McpServerConfig {
+            command: Some("moraine".to_string()),
+            args: vec!["mcp".to_string()],
             env: HashMap::new(),
             cwd: None,
             url: None,

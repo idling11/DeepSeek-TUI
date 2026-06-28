@@ -27,6 +27,21 @@ notes, and relevant issue/PR comments.
 
 ## Contributors by time
 
+<details open>
+<summary><strong>v0.8.66 — cleanup lane in progress</strong></summary>
+
+- **[noaft](https://github.com/noaft)** — `/links` provider docs fallback
+  update, including the current CodeWhale docs URL and a Baidu Qianfan docs
+  link (#3621, harvested)
+- **[noaft](https://github.com/noaft)** — OpenModel provider support across
+  config, CLI, TUI provider picker, docs, and registry checks (#3585,
+  harvested)
+- **[pkeging](https://github.com/pkeging)** — WeCom Bridge deployment and
+  security documentation, including the approval-timeout configuration surface
+  (#3640, harvested)
+
+</details>
+
 <details>
 <summary><strong>v0.8.63 — sub-agent budgets, command extraction &amp; reliability</strong></summary>
 

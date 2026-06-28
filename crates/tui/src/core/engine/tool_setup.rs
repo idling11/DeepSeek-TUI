@@ -15,15 +15,15 @@ use crate::worker_profile::ShellPolicy;
 ///   files inside the workspace because it whitelisted the workspace as
 ///   writable. Plan mode is investigation only; if the user wants to change
 ///   files they should switch to Agent.
-/// - **Agent**: `WorkspaceWrite` with workspace as writable root and network
-///   on. Approval flow gates risky individual commands; the sandbox handles
-///   the rest. Network is allowed because cargo / npm / curl-style commands
-///   are normal during agent work and DNS-deny breaks them silently.
+/// - **Agent/Auto**: `WorkspaceWrite` with workspace as writable root and
+///   network on. Approval flow gates risky individual commands; the sandbox
+///   handles the rest. Network is allowed because cargo / npm / curl-style
+///   commands are normal during agent work and DNS-deny breaks them silently.
 /// - **YOLO**: `DangerFullAccess` — explicit no-guardrails contract.
 pub(crate) fn sandbox_policy_for_mode(mode: AppMode, workspace: &Path) -> SandboxPolicy {
     match mode {
         AppMode::Plan => SandboxPolicy::ReadOnly,
-        AppMode::Agent => SandboxPolicy::WorkspaceWrite {
+        AppMode::Agent | AppMode::Auto => SandboxPolicy::WorkspaceWrite {
             writable_roots: vec![workspace.to_path_buf()],
             network_access: true,
             exclude_tmpdir: false,
@@ -47,8 +47,12 @@ pub(crate) fn shell_policy_for_mode(mode: AppMode, allow_shell: bool) -> ShellPo
         // registry would expose `exec_shell` while the prompt said there was
         // no shell). Keep Plan shell-free; switch to Agent to run commands.
         AppMode::Plan => ShellPolicy::None,
-        AppMode::Agent | AppMode::Yolo => ShellPolicy::Full,
+        AppMode::Agent | AppMode::Auto | AppMode::Yolo => ShellPolicy::Full,
     }
+}
+
+fn should_register_remember_tool(memory_enabled: bool, moraine_fallback: bool) -> bool {
+    memory_enabled && !moraine_fallback
 }
 
 impl Engine {
@@ -122,7 +126,8 @@ impl Engine {
         // Register the `remember` tool only when the user has opted in to
         // user-memory (#489). Without that opt-in the tool would always
         // fail; surfacing it would just waste catalog slots.
-        if self.config.memory_enabled {
+        // TODO(v0.8.71): remove when Moraine recall stable; see #3490, #3495
+        if should_register_remember_tool(self.config.memory_enabled, self.config.moraine_fallback) {
             builder = builder.with_remember_tool();
         }
 
@@ -140,5 +145,17 @@ impl Engine {
         builder = builder.with_notify_tool();
 
         builder
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_register_remember_tool;
+
+    #[test]
+    fn remember_tool_registration_respects_moraine_fallback() {
+        assert!(should_register_remember_tool(true, false));
+        assert!(!should_register_remember_tool(false, false));
+        assert!(!should_register_remember_tool(true, true));
     }
 }

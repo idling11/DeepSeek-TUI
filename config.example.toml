@@ -16,11 +16,11 @@
 # `--provider volcengine`, `--provider openrouter`, `--provider xiaomi-mimo`,
 # `--provider fireworks`, `--provider siliconflow`, `--provider siliconflow-CN`,
 # `/provider arcee`, `/provider moonshot`, `/provider qianfan`, `/provider sglang`, `/provider vllm`,
-# `/provider ollama`, `/provider huggingface`, `/provider stepfun`) toggle without having to re-enter keys. Top-level
+# `/provider ollama`, `/provider huggingface`, `/provider stepfun`, `/provider openmodel`) toggle without having to re-enter keys. Top-level
 # `api_key` / `base_url` are
 # still read as DeepSeek defaults when `[providers.deepseek]` is absent
 # (backward compatibility).
-provider = "deepseek" # deepseek | deepseek-cn | deepseek-anthropic | nvidia-nim | openai | atlascloud | wanjie-ark | volcengine | openrouter | xiaomi-mimo | novita | fireworks | siliconflow | siliconflow-CN | arcee | moonshot | zai | stepfun | minimax | sglang | vllm | ollama | huggingface | together | qianfan | openai-codex | anthropic | deepinfra
+provider = "deepseek" # deepseek | deepseek-cn | deepseek-anthropic | nvidia-nim | openai | atlascloud | wanjie-ark | volcengine | openrouter | xiaomi-mimo | novita | fireworks | siliconflow | siliconflow-CN | arcee | moonshot | zai | stepfun | minimax | sglang | vllm | ollama | huggingface | together | qianfan | openai-codex | anthropic | openmodel | deepinfra
 api_key = "YOUR_DEEPSEEK_API_KEY" # must be non-empty
 base_url = "https://api.deepseek.com/beta"
 # provider = "deepseek-cn"                       # legacy alias (official host is still https://api.deepseek.com)
@@ -181,11 +181,13 @@ sandbox_mode = "workspace-write" # read-only | workspace-write | danger-full-acc
 # prompt_suggestion = true  # opt-in: show ghost-text follow-up question in composer after each turn
 
 # Typed permission rules live in a sibling `permissions.toml` file, not in
-# config.toml. This shape is ask-only and feeds the execution policy engine;
-# it does not define allow/deny records, globs, broad directory rules, or a
-# rule editor/deleter UI. YOLO / auto approval is not restricted by ask rules.
+# config.toml. Each `[[rules]]` entry accepts `tool`, optional `command`
+# or `path`, and an `action` field: `"deny"`, `"ask"` (default), or `"allow"`.
+# Deny always wins over ask, which wins over allow.  Globs, broad directory
+# rules, and a rule editor/deleter UI are future work.
 #
-# In supported approval cards, press `S` to approve once and save exact rules:
+# In supported approval cards, press `S` to approve once and save exact rules
+# (currently saved as ask-only; deny/allow UI save is future work):
 #   exec_shell  -> exact approved command string
 #   write_file  -> exact workspace-relative target path
 #   edit_file   -> exact workspace-relative target path
@@ -198,14 +200,35 @@ sandbox_mode = "workspace-write" # read-only | workspace-write | danger-full-acc
 # [[rules]]
 # tool = "exec_shell"
 # command = "cargo test"
+# action = "ask"
 #
+# # Block dangerous commands
+# [[rules]]
+# tool = "exec_shell"
+# command = "sed"
+# action = "deny"
+#
+# [[rules]]
+# tool = "exec_shell"
+# command = "awk"
+# action = "deny"
+#
+# # Allow trusted commands without asking
+# [[rules]]
+# tool = "exec_shell"
+# command = "git status"
+# action = "allow"
+#
+# # Path-based deny
 # [[rules]]
 # tool = "write_file"
 # path = "src/main.rs"
+# action = "deny"
 #
 # [[rules]]
 # tool = "edit_file"
 # path = "src/lib.rs"
+# action = "ask"
 #
 # [[rules]]
 # tool = "apply_patch"
@@ -214,7 +237,7 @@ sandbox_mode = "workspace-write" # read-only | workspace-write | danger-full-acc
 # [[rules]]
 # tool = "read_file"
 # path = "secrets/api_key.txt"
-
+# action = "deny"
 # ─────────────────────────────────────────────────────────────────────────────────
 # External Sandbox Backend (pluggable remote execution)
 # ─────────────────────────────────────────────────────────────────────────────────
@@ -562,6 +585,15 @@ max_subagents = 10 # optional (1-20)
 # api_key = "sk-ant-..."
 # base_url = "https://api.anthropic.com"
 # model = "claude-sonnet-4-6"
+
+# OpenModel Provider (Anthropic-compatible Messages API)
+# Talks to https://api.openmodel.ai/v1/messages with Bearer auth. OpenModel
+# routes DeepSeek, DashScope, Xiaomi, Claude, and other models by model id.
+# Env vars: OPENMODEL_API_KEY, OPENMODEL_BASE_URL, OPENMODEL_MODEL.
+[providers.openmodel]
+# api_key = "om-..."
+# base_url = "https://api.openmodel.ai"
+# model = "deepseek-v4-flash"
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # Web Search Provider

@@ -334,6 +334,11 @@ pub struct EngineConfig {
     /// engine reads `memory_path` on each prompt assembly and prepends a
     /// `<user_memory>` block to the system prompt.
     pub memory_enabled: bool,
+    /// When `true`, the legacy `memory.rs` push/inject path is deprecated
+    /// in favour of Moraine MCP recall. `compose_block` returns `None`
+    /// regardless of `memory_enabled`, the `remember` tool is not
+    /// registered, and `# foo` quick-add falls through.
+    pub moraine_fallback: bool,
     /// Path to the user memory file (#489). Always populated; only
     /// consulted when `memory_enabled` is `true`.
     pub memory_path: PathBuf,
@@ -446,6 +451,7 @@ impl Default for EngineConfig {
             runtime_services: RuntimeToolServices::default(),
             subagent_model_overrides: HashMap::new(),
             memory_enabled: false,
+            moraine_fallback: false,
             memory_path: PathBuf::from("./memory.md"),
             speech_output_dir: None,
             vision_config: None,
@@ -658,7 +664,7 @@ fn subagent_mailbox_best_effort_send_permitted(
 impl Engine {
     fn mode_runtime_instructions(mode: AppMode) -> &'static str {
         match mode {
-            AppMode::Agent => prompts::AGENT_MODE,
+            AppMode::Agent | AppMode::Auto => prompts::AGENT_MODE,
             AppMode::Plan => prompts::PLAN_MODE,
             AppMode::Yolo => prompts::YOLO_MODE,
         }
@@ -845,8 +851,10 @@ impl Engine {
         // Set up stable system prompt with project context (default to agent mode).
         // Per-turn working-set metadata is injected into the latest user
         // message at request time so file churn does not rewrite this prefix.
-        let user_memory_block =
-            crate::memory::compose_block(config.memory_enabled, &config.memory_path);
+        let user_memory_block = crate::memory::compose_block(
+            config.memory_enabled && !config.moraine_fallback, // TODO(v0.8.71): remove when Moraine recall stable; see #3490, #3495
+            &config.memory_path,
+        );
         let prompt_goal_objective =
             goal_objective_for_prompt(config.goal_objective.as_deref(), &config.goal_state);
         let system_prompt =
@@ -1587,6 +1595,7 @@ impl Engine {
                         system_prompt_override,
                         model,
                         workspace,
+                        mode,
                     } => {
                         if let Some(session_id) = session_id {
                             self.session.id = session_id;
@@ -1606,6 +1615,7 @@ impl Engine {
                         self.session.auto_model = model.trim().eq_ignore_ascii_case("auto");
                         self.session.model = model;
                         self.session.workspace = workspace.clone();
+                        self.current_mode = mode;
                         self.config.model.clone_from(&self.session.model);
                         self.config.workspace = workspace.clone();
                         let ctx =
@@ -2179,7 +2189,7 @@ impl Engine {
             &content,
             allow_shell,
             trust_mode,
-            auto_approve,
+            mode == AppMode::Yolo || auto_approve,
             approval_mode,
         );
         if let Some(status) = input_policy.status.clone() {
@@ -2430,7 +2440,7 @@ impl Engine {
         };
 
         let mut tool_registry = match input_policy.mode {
-            AppMode::Agent | AppMode::Yolo => {
+            AppMode::Agent | AppMode::Auto | AppMode::Yolo => {
                 if subagents_available {
                     let runtime = if let Some(client) = self.deepseek_client.clone() {
                         let mut rt = SubAgentRuntime::new(
@@ -3190,8 +3200,10 @@ impl Engine {
     }
     /// Refresh the stable system prompt based on current non-mode context.
     fn refresh_system_prompt(&mut self) {
-        let user_memory_block =
-            crate::memory::compose_block(self.config.memory_enabled, &self.config.memory_path);
+        let user_memory_block = crate::memory::compose_block(
+            self.config.memory_enabled && !self.config.moraine_fallback, // TODO(v0.8.71): remove when Moraine recall stable; see #3490, #3495
+            &self.config.memory_path,
+        );
         let prompt_goal_objective = goal_objective_for_prompt(
             self.config.goal_objective.as_deref(),
             &self.config.goal_state,
@@ -3432,13 +3444,16 @@ fn effective_input_policy(
         let had_auto_authority = matches!(mode, AppMode::Yolo)
             || trust_mode
             || auto_approve
-            || matches!(approval_mode, crate::tui::approval::ApprovalMode::Auto);
+            || matches!(approval_mode, crate::tui::approval::ApprovalMode::Bypass);
         if matches!(mode, AppMode::Yolo) {
             mode = AppMode::Agent;
         }
         trust_mode = false;
         auto_approve = false;
-        if matches!(approval_mode, crate::tui::approval::ApprovalMode::Auto) {
+        if matches!(
+            approval_mode,
+            crate::tui::approval::ApprovalMode::Auto | crate::tui::approval::ApprovalMode::Bypass
+        ) {
             approval_mode = crate::tui::approval::ApprovalMode::Suggest;
         }
         if had_auto_authority {
@@ -3516,7 +3531,7 @@ fn agent_approval_mode_for_turn(
     approval_mode: crate::tui::approval::ApprovalMode,
 ) -> crate::tui::approval::ApprovalMode {
     if auto_approve {
-        crate::tui::approval::ApprovalMode::Auto
+        crate::tui::approval::ApprovalMode::Bypass
     } else {
         approval_mode
     }
@@ -3655,9 +3670,9 @@ fn tool_ask_rule_decision_for_context(
     let cwd = workspace.to_string_lossy();
     let ask_for_approval = match approval_mode {
         crate::tui::approval::ApprovalMode::Never => AskForApproval::Never,
-        crate::tui::approval::ApprovalMode::Auto | crate::tui::approval::ApprovalMode::Suggest => {
-            AskForApproval::OnFailure
-        }
+        crate::tui::approval::ApprovalMode::Auto
+        | crate::tui::approval::ApprovalMode::Bypass
+        | crate::tui::approval::ApprovalMode::Suggest => AskForApproval::OnFailure,
     };
     let decision = config
         .exec_policy_engine

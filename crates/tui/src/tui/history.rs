@@ -283,7 +283,7 @@ impl HistoryCell {
                 folded ^ !options.verbose,
                 options.low_motion,
             ),
-            HistoryCell::Tool(cell) if !options.show_tool_details => {
+            HistoryCell::Tool(cell) if !options.show_tool_details && !cell.is_failed() => {
                 let mut lines = cell.lines_with_motion(width, options.low_motion);
                 if lines.len() > 2 {
                     lines.truncate(2);
@@ -294,7 +294,7 @@ impl HistoryCell {
                 }
                 lines
             }
-            HistoryCell::Tool(cell) if options.calm_mode => {
+            HistoryCell::Tool(cell) if options.calm_mode && !cell.is_failed() => {
                 let mut lines = cell.lines_with_motion(width, options.low_motion);
                 if lines.len() > TOOL_CARD_SUMMARY_LINES {
                     lines.truncate(TOOL_CARD_SUMMARY_LINES);

@@ -1,7 +1,7 @@
 use super::*;
 
 use super::context::{COMPACTION_SUMMARY_MARKER, TURN_MAX_OUTPUT_TOKENS};
-use super::turn_loop::registered_tool_approval_required;
+use super::turn_loop::{registered_tool_approval_required, tool_error_degradation_runtime_hint};
 use crate::config::ApiProvider;
 use crate::models::{SystemBlock, Usage};
 use crate::test_support::{EnvVarGuard, lock_test_env};
@@ -645,14 +645,14 @@ fn auto_review_policy_preserves_yolo_for_detached_destructive_tools() {
             "exec_shell",
             &json!({"command": "cargo test", "background": true}),
             run_origin,
-            crate::tui::approval::ApprovalMode::Auto,
+            crate::tui::approval::ApprovalMode::Bypass,
             Some("run tests in the background"),
             true,
             false,
         );
 
         assert_eq!(decision, AutoReviewPlanDecision::NoChange);
-        assert_eq!(audit["approval_mode"], "AUTO");
+        assert_eq!(audit["approval_mode"], "BYPASS");
         assert_eq!(audit["run_origin"], run_origin.as_str());
         assert_eq!(audit["decision"], "ask_user");
     }
@@ -1328,6 +1328,99 @@ fn tool_error_messages_include_actionable_hints() {
         formatted.contains("Adjust approval mode or request permission"),
         "{formatted}"
     );
+}
+
+#[test]
+fn transient_tool_errors_include_fallback_hint() {
+    let search_error = ToolError::execution_failed("Web search request failed: timeout");
+    let formatted = format_tool_error(&search_error, "web_search");
+
+    assert!(
+        formatted.contains("Fallback: after one retry"),
+        "{formatted}"
+    );
+    assert!(formatted.contains("direct URL"), "{formatted}");
+    assert!(formatted.contains("instead of repeating"), "{formatted}");
+}
+
+#[test]
+fn tool_errors_with_specific_recovery_do_not_get_generic_fallback() {
+    let message = "edit_file search string not found. Recovery: call read_file first.";
+    let formatted = format_tool_error(&ToolError::execution_failed(message), "edit_file");
+
+    assert_eq!(formatted, message);
+}
+
+#[test]
+fn repeated_tool_errors_wait_until_degradation_threshold() {
+    let tools = vec!["web_search".to_string()];
+
+    assert!(tool_error_degradation_runtime_hint(1, &tools, &[ErrorCategory::Tool], &[]).is_none());
+}
+
+#[test]
+fn repeated_tool_errors_emit_model_visible_degradation_hint() {
+    let tools = vec!["web_search".to_string(), "web_search".to_string()];
+    let hint = tool_error_degradation_runtime_hint(2, &tools, &[ErrorCategory::Tool], &[])
+        .expect("second consecutive tool-error step should emit a runtime hint");
+
+    assert!(hint.contains("2 consecutive"), "{hint}");
+    assert!(hint.contains("web_search"), "{hint}");
+    assert!(hint.contains("do not repeat"), "{hint}");
+    assert!(hint.contains("alternate tool"), "{hint}");
+    assert!(hint.contains("narrow the request"), "{hint}");
+}
+
+#[test]
+fn repeated_authorization_errors_do_not_emit_degradation_hint() {
+    let tools = vec!["exec_shell".to_string()];
+
+    assert!(
+        tool_error_degradation_runtime_hint(2, &tools, &[ErrorCategory::Authorization], &[])
+            .is_none()
+    );
+}
+
+#[test]
+fn repeated_search_errors_suggest_direct_url_patterns_for_domains() {
+    let tools = vec!["web_search".to_string()];
+    let inputs = vec![json!({"query": "site:example.edu announcements"})];
+    let hint = tool_error_degradation_runtime_hint(2, &tools, &[ErrorCategory::Tool], &inputs)
+        .expect("repeated web_search failure should emit a domain-aware fallback hint");
+
+    assert!(hint.contains("fetch_url"), "{hint}");
+    assert!(hint.contains("https://example.edu/announcements"), "{hint}");
+    assert!(hint.contains("https://example.edu/news"), "{hint}");
+}
+
+#[test]
+fn repeated_web_run_errors_suggest_direct_url_patterns_for_domains_list() {
+    let tools = vec!["web.run".to_string()];
+    let inputs = vec![json!({
+        "search_query": [
+            {
+                "q": "announcements",
+                "domains": ["www.example.edu"]
+            }
+        ]
+    })];
+    let hint = tool_error_degradation_runtime_hint(2, &tools, &[ErrorCategory::Tool], &inputs)
+        .expect("repeated web.run failure should emit a domain-aware fallback hint");
+
+    assert!(hint.contains("https://example.edu/announcements"), "{hint}");
+    assert!(hint.contains("https://example.edu/news"), "{hint}");
+}
+
+#[test]
+fn repeated_search_errors_do_not_treat_versions_as_domains() {
+    let tools = vec!["web_search".to_string()];
+    let inputs = vec![json!({"query": "release v1.2 notes"})];
+    let hint = tool_error_degradation_runtime_hint(2, &tools, &[ErrorCategory::Tool], &inputs)
+        .expect("repeated web_search failure should still emit the generic hint");
+
+    assert!(hint.contains("alternate tool"), "{hint}");
+    assert!(!hint.contains("fetch_url"), "{hint}");
+    assert!(!hint.contains("https://v1.2"), "{hint}");
 }
 
 #[test]
@@ -3089,11 +3182,11 @@ fn turn_approval_mode_prefers_auto_approve_flag() {
 
     assert_eq!(
         agent_approval_mode_for_turn(true, ApprovalMode::Suggest),
-        ApprovalMode::Auto
+        ApprovalMode::Bypass
     );
     assert_eq!(
         agent_approval_mode_for_turn(true, ApprovalMode::Never),
-        ApprovalMode::Auto
+        ApprovalMode::Bypass
     );
 }
 
@@ -3177,6 +3270,47 @@ async fn change_mode_op_updates_current_mode_and_emits_status() {
 }
 
 #[tokio::test]
+async fn sync_session_restores_current_mode() {
+    let tmp = tempdir().expect("tempdir");
+    let config = EngineConfig {
+        workspace: tmp.path().to_path_buf(),
+        model: "deepseek-v4-pro".to_string(),
+        ..Default::default()
+    };
+    let (engine, handle) = Engine::new(config, &Config::default());
+
+    let run = tokio::spawn(engine.run());
+    handle
+        .send(Op::SyncSession {
+            session_id: Some("plan-session".to_string()),
+            messages: Vec::new(),
+            system_prompt: None,
+            system_prompt_override: false,
+            model: "deepseek-v4-pro".to_string(),
+            workspace: tmp.path().to_path_buf(),
+            mode: AppMode::Plan,
+        })
+        .await
+        .expect("sync session");
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    handle
+        .send(Op::GetSessionSnapshot {
+            tx: std::sync::Arc::new(std::sync::Mutex::new(Some(tx))),
+        })
+        .await
+        .expect("request snapshot");
+    let snapshot = tokio::time::timeout(Duration::from_secs(2), rx)
+        .await
+        .expect("snapshot response")
+        .expect("snapshot");
+
+    assert_eq!(snapshot.mode, "plan");
+
+    run.abort();
+}
+
+#[tokio::test]
 async fn edit_last_turn_preserves_current_mode() {
     let tmp = tempdir().expect("tempdir");
     let config = EngineConfig {
@@ -3211,6 +3345,7 @@ async fn edit_last_turn_preserves_current_mode() {
             system_prompt_override: false,
             model: "deepseek-v4-pro".to_string(),
             workspace: tmp.path().to_path_buf(),
+            mode: AppMode::Agent,
         })
         .await
         .expect("sync session");

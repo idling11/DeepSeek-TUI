@@ -21,12 +21,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added the native `codew` shim to release archives, Windows installer inputs,
   local release-asset preparation, and checksum verification so manual installs
   receive the same short command that Cargo installs build.
+- Added OpenModel as a first-class Anthropic Messages provider, with config,
+  CLI, provider picker, docs, and registry coverage. Harvested from #3585 by
+  @noaft.
+- Added WeCom Bridge deployment and security documentation, with shipped
+  runtime/bridge commands and approval-timeout environment guidance. Harvested
+  from #3640 by @pkeging.
+- Added a token/cache/cost `scorecard` command for offline release gating,
+  baseline regression checks, and per-turn cost visibility (#3388). Stream-JSON
+  exec metadata now also reports conservative `input_analysis` and
+  `visible_final_answer_chars`, so benchmark harnesses can measure transcript
+  growth and final-answer bloat without guessing (#2956, #2957).
+- Added a release evidence ledger for v0.8.66 and opened the external ACP
+  registry submission for CodeWhale after validating the published
+  `codewhale@0.8.65` ACP auth handshake against the upstream registry checker
+  (#3192).
 
 ### Changed
 
 - Clarified the Fleet setup surface and docs so Fleet is treated as the durable
   sub-agent configuration layer while WhaleFlow is the agent-authored
   orchestration plan that selects and monitors Fleet slots.
+- Slimmed the default Constitution prompt while keeping its required structural
+  anchors under regression coverage, reducing the static prompt footprint for
+  cache-sensitive turns (#2953).
+
+### Fixed
+
+- Hardened the OHOS dependency drift check against transient Cargo registry EOFs
+  by retrying the dependency graph probe before failing CI.
+- Updated the `/links` provider fallback to the current CodeWhale docs URL and
+  added a Baidu Qianfan docs link. Harvested from #3621 by @noaft.
+- Hardened `CODEWHALE_TOOL_SURFACE=shell-only` for benchmark/exec runs: the
+  shell-only surface hides native tools from the model-visible catalog, and
+  unknown `CODEWHALE_TOOL_SURFACE` values now warn instead of silently falling
+  back to the full tool surface (#2954).
 
 ## [0.8.65] - 2026-06-24
 

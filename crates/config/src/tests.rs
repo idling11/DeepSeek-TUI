@@ -51,7 +51,8 @@ fn permissions_toml_deserializes_typed_ask_rules() {
 }
 
 #[test]
-fn permissions_toml_rejects_typed_allow_deny_shape() {
+fn permissions_toml_rejects_unknown_decision_field() {
+    // `decision` is NOT a valid field — `deny_unknown_fields` still active.
     let err = toml::from_str::<PermissionsToml>(
         r#"
         [[rules]]
@@ -60,9 +61,184 @@ fn permissions_toml_rejects_typed_allow_deny_shape() {
         command = "cargo test"
         "#,
     )
-    .expect_err("permissions.toml should be ask-only in this slice");
+    .expect_err("permissions.toml should reject unknown 'decision' field");
 
     assert!(err.message().contains("unknown field"));
+}
+
+#[test]
+fn permissions_toml_deserializes_action_deny_and_allow() {
+    let permissions: PermissionsToml = toml::from_str(
+        r#"
+        [[rules]]
+        tool = "exec_shell"
+        command = "sed"
+        action = "deny"
+
+        [[rules]]
+        tool = "exec_shell"
+        command = "git status"
+        action = "allow"
+
+        [[rules]]
+        tool = "exec_shell"
+        command = "cargo test"
+        "#,
+    )
+    .expect("permissions toml with actions");
+
+    assert_eq!(permissions.rules.len(), 3);
+    assert_eq!(
+        permissions.rules[0].action,
+        codewhale_execpolicy::PermissionAction::Deny
+    );
+    assert_eq!(
+        permissions.rules[1].action,
+        codewhale_execpolicy::PermissionAction::Allow
+    );
+    assert_eq!(
+        permissions.rules[2].action,
+        codewhale_execpolicy::PermissionAction::Ask
+    ); // default
+}
+
+#[test]
+fn permissions_ruleset_populates_denied_and_trusted_prefixes() {
+    let permissions: PermissionsToml = toml::from_str(
+        r#"
+        [[rules]]
+        tool = "exec_shell"
+        command = "sed"
+        action = "deny"
+
+        [[rules]]
+        tool = "exec_shell"
+        command = "awk"
+        action = "deny"
+
+        [[rules]]
+        tool = "exec_shell"
+        command = "git status"
+        action = "allow"
+
+        [[rules]]
+        tool = "exec_shell"
+        command = "cargo test"
+        action = "ask"
+        "#,
+    )
+    .unwrap();
+
+    let ruleset = permissions.ruleset();
+
+    // All four rules kept as ask_rules for path-based / tool-only matching
+    assert_eq!(ruleset.ask_rules.len(), 4);
+    // deny rules promoted to denied_prefixes
+    assert!(ruleset.denied_prefixes.contains(&"sed".to_string()));
+    assert!(ruleset.denied_prefixes.contains(&"awk".to_string()));
+    // allow rule promoted to trusted_prefixes
+    assert!(ruleset.trusted_prefixes.contains(&"git status".to_string()));
+    // ask rule NOT in trusted/denied prefixes
+    assert!(!ruleset.trusted_prefixes.contains(&"cargo test".to_string()));
+    assert!(!ruleset.denied_prefixes.contains(&"cargo test".to_string()));
+}
+
+#[test]
+fn permissions_ruleset_deny_without_command_stays_in_ask_rules() {
+    // Tool-only deny (no command) can't be promoted to denied_prefixes.
+    let permissions: PermissionsToml = toml::from_str(
+        r#"
+        [[rules]]
+        tool = "exec_shell"
+        action = "deny"
+        "#,
+    )
+    .unwrap();
+
+    let ruleset = permissions.ruleset();
+    assert_eq!(ruleset.ask_rules.len(), 1);
+    assert_eq!(
+        ruleset.ask_rules[0].action,
+        codewhale_execpolicy::PermissionAction::Deny
+    );
+    // No command → nothing to promote to denied_prefixes
+    assert!(ruleset.denied_prefixes.is_empty());
+}
+
+#[test]
+fn permissions_ruleset_empty_rules_produces_empty_ruleset() {
+    let permissions = PermissionsToml::default();
+    let ruleset = permissions.ruleset();
+    assert!(ruleset.trusted_prefixes.is_empty());
+    assert!(ruleset.denied_prefixes.is_empty());
+    assert!(ruleset.ask_rules.is_empty());
+}
+
+#[test]
+fn permissions_ruleset_mixed_actions_all_coexist() {
+    let permissions: PermissionsToml = toml::from_str(
+        r#"
+        [[rules]]
+        tool = "exec_shell"
+        command = "rm -rf"
+        action = "deny"
+
+        [[rules]]
+        tool = "exec_shell"
+        command = "git status"
+        action = "allow"
+
+        [[rules]]
+        tool = "exec_shell"
+        command = "npm test"
+        action = "ask"
+
+        [[rules]]
+        tool = "read_file"
+        path = "Cargo.toml"
+        action = "allow"
+
+        [[rules]]
+        tool = "write_file"
+        path = "src/secrets.rs"
+        action = "deny"
+        "#,
+    )
+    .unwrap();
+
+    let ruleset = permissions.ruleset();
+
+    // All 5 rules in ask_rules
+    assert_eq!(ruleset.ask_rules.len(), 5);
+
+    // Command-based deny → denied_prefixes
+    assert!(ruleset.denied_prefixes.contains(&"rm -rf".to_string()));
+    assert_eq!(ruleset.denied_prefixes.len(), 1); // only rm -rf has a command
+
+    // Command-based allow → trusted_prefixes
+    assert!(ruleset.trusted_prefixes.contains(&"git status".to_string()));
+    assert_eq!(ruleset.trusted_prefixes.len(), 1); // only git status has a command
+
+    // Path-based rules stay in ask_rules but not in prefixes
+    let path_deny = ruleset
+        .ask_rules
+        .iter()
+        .find(|r| r.path.as_deref() == Some("src/secrets.rs"))
+        .unwrap();
+    assert_eq!(
+        path_deny.action,
+        codewhale_execpolicy::PermissionAction::Deny
+    );
+
+    let path_allow = ruleset
+        .ask_rules
+        .iter()
+        .find(|r| r.path.as_deref() == Some("Cargo.toml"))
+        .unwrap();
+    assert_eq!(
+        path_allow.action,
+        codewhale_execpolicy::PermissionAction::Allow
+    );
 }
 
 #[test]
@@ -566,6 +742,9 @@ struct EnvGuard {
     openrouter_api_key: Option<OsString>,
     openrouter_base_url: Option<OsString>,
     openrouter_model: Option<OsString>,
+    openmodel_api_key: Option<OsString>,
+    openmodel_base_url: Option<OsString>,
+    openmodel_model: Option<OsString>,
     xiaomi_mimo_token_plan_api_key: Option<OsString>,
     mimo_token_plan_api_key: Option<OsString>,
     xiaomi_mimo_api_key: Option<OsString>,
@@ -673,6 +852,9 @@ impl EnvGuard {
             openrouter_api_key: env::var_os("OPENROUTER_API_KEY"),
             openrouter_base_url: env::var_os("OPENROUTER_BASE_URL"),
             openrouter_model: env::var_os("OPENROUTER_MODEL"),
+            openmodel_api_key: env::var_os("OPENMODEL_API_KEY"),
+            openmodel_base_url: env::var_os("OPENMODEL_BASE_URL"),
+            openmodel_model: env::var_os("OPENMODEL_MODEL"),
             xiaomi_mimo_token_plan_api_key: env::var_os("XIAOMI_MIMO_TOKEN_PLAN_API_KEY"),
             mimo_token_plan_api_key: env::var_os("MIMO_TOKEN_PLAN_API_KEY"),
             xiaomi_mimo_api_key: env::var_os("XIAOMI_MIMO_API_KEY"),
@@ -775,6 +957,9 @@ impl EnvGuard {
             env::remove_var("OPENROUTER_API_KEY");
             env::remove_var("OPENROUTER_BASE_URL");
             env::remove_var("OPENROUTER_MODEL");
+            env::remove_var("OPENMODEL_API_KEY");
+            env::remove_var("OPENMODEL_BASE_URL");
+            env::remove_var("OPENMODEL_MODEL");
             env::remove_var("XIAOMI_MIMO_TOKEN_PLAN_API_KEY");
             env::remove_var("MIMO_TOKEN_PLAN_API_KEY");
             env::remove_var("XIAOMI_MIMO_API_KEY");
@@ -900,6 +1085,9 @@ impl Drop for EnvGuard {
             Self::restore_var("OPENROUTER_API_KEY", self.openrouter_api_key.take());
             Self::restore_var("OPENROUTER_BASE_URL", self.openrouter_base_url.take());
             Self::restore_var("OPENROUTER_MODEL", self.openrouter_model.take());
+            Self::restore_var("OPENMODEL_API_KEY", self.openmodel_api_key.take());
+            Self::restore_var("OPENMODEL_BASE_URL", self.openmodel_base_url.take());
+            Self::restore_var("OPENMODEL_MODEL", self.openmodel_model.take());
             Self::restore_var(
                 "XIAOMI_MIMO_TOKEN_PLAN_API_KEY",
                 self.xiaomi_mimo_token_plan_api_key.take(),
@@ -2973,6 +3161,49 @@ fn deepseek_anthropic_route_defaults_to_anthropic_endpoint() {
 }
 
 #[test]
+fn openmodel_route_defaults_to_messages_endpoint() {
+    let _lock = env_lock();
+    let _env = EnvGuard::without_deepseek_runtime_overrides();
+    for alias in ["openmodel", "open-model", "open_model"] {
+        assert_eq!(ProviderKind::parse(alias), Some(ProviderKind::Openmodel));
+
+        let parsed: ConfigToml =
+            toml::from_str(&format!("provider = \"{alias}\"")).expect("openmodel alias");
+        assert_eq!(parsed.provider, ProviderKind::Openmodel);
+    }
+
+    let provider = provider::resolve_provider("openmodel").expect("openmodel metadata resolves");
+    assert_eq!(provider.kind(), ProviderKind::Openmodel);
+    assert_eq!(provider.provider_config_key(), "openmodel");
+    assert_eq!(provider.default_model(), DEFAULT_OPENMODEL_MODEL);
+    assert_eq!(provider.default_base_url(), DEFAULT_OPENMODEL_BASE_URL);
+    assert_eq!(provider.env_vars(), &["OPENMODEL_API_KEY"]);
+    assert_eq!(provider.wire(), provider::WireFormat::AnthropicMessages);
+
+    let config = ConfigToml {
+        provider: ProviderKind::Openmodel,
+        ..ConfigToml::default()
+    };
+    let resolved = config.resolve_runtime_options(&CliRuntimeOverrides::default());
+
+    assert_eq!(resolved.provider, ProviderKind::Openmodel);
+    assert_eq!(resolved.base_url, DEFAULT_OPENMODEL_BASE_URL);
+    assert_eq!(resolved.model, DEFAULT_OPENMODEL_MODEL);
+
+    unsafe {
+        std::env::set_var("OPENMODEL_BASE_URL", "https://gateway.example.test");
+        std::env::set_var("OPENMODEL_MODEL", "claude-sonnet-4-20250514");
+    }
+    let resolved = config.resolve_runtime_options(&CliRuntimeOverrides::default());
+    assert_eq!(resolved.base_url, "https://gateway.example.test");
+    assert_eq!(resolved.model, "claude-sonnet-4-20250514");
+    unsafe {
+        std::env::remove_var("OPENMODEL_BASE_URL");
+        std::env::remove_var("OPENMODEL_MODEL");
+    }
+}
+
+#[test]
 fn provider_metadata_registry_covers_every_provider_kind_once() {
     let providers = provider::all_providers();
     assert_eq!(providers.len(), ProviderKind::ALL.len());
@@ -3065,7 +3296,7 @@ fn provider_metadata_defaults_match_runtime_helpers() {
         // is OpenAI-compatible Chat Completions.
         let expected_wire = match kind {
             ProviderKind::OpenaiCodex => provider::WireFormat::Responses,
-            ProviderKind::Anthropic | ProviderKind::DeepseekAnthropic => {
+            ProviderKind::Anthropic | ProviderKind::DeepseekAnthropic | ProviderKind::Openmodel => {
                 provider::WireFormat::AnthropicMessages
             }
             _ => provider::WireFormat::ChatCompletions,

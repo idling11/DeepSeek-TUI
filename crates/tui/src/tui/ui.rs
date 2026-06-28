@@ -227,7 +227,7 @@ fn should_auto_approve_approval_request(
 }
 
 fn app_auto_approve_enabled(app: &App) -> bool {
-    app.mode == AppMode::Yolo || app.approval_mode == ApprovalMode::Auto
+    app.mode == AppMode::Yolo || app.approval_mode == ApprovalMode::Bypass
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -819,6 +819,7 @@ pub async fn run_tui(config: &Config, options: TuiOptions) -> Result<()> {
                 system_prompt_override: false,
                 model: app.model.clone(),
                 workspace: app.workspace.clone(),
+                mode: app.mode,
             })
             .await;
     }
@@ -1097,6 +1098,54 @@ fn is_memory_quick_add(input: &str) -> bool {
     !trimmed.trim_start_matches('#').trim().is_empty()
 }
 
+fn should_intercept_memory_quick_add(config: &Config, input: &str) -> bool {
+    config.memory_enabled() && !config.moraine_fallback() && is_memory_quick_add(input)
+}
+
+#[cfg(test)]
+mod memory_quick_add_tests {
+    use super::should_intercept_memory_quick_add;
+    use crate::config::Config;
+
+    #[test]
+    fn memory_quick_add_interception_respects_moraine_fallback() {
+        let enabled: Config = toml::from_str(
+            r#"
+            [memory]
+            enabled = true
+            "#,
+        )
+        .expect("parse enabled memory config");
+        assert!(should_intercept_memory_quick_add(
+            &enabled,
+            "# remember this"
+        ));
+
+        let moraine: Config = toml::from_str(
+            r#"
+            [memory]
+            enabled = true
+            moraine_fallback = true
+            "#,
+        )
+        .expect("parse moraine memory config");
+        assert!(!should_intercept_memory_quick_add(
+            &moraine,
+            "# remember this"
+        ));
+
+        let disabled: Config = Config::default();
+        assert!(!should_intercept_memory_quick_add(
+            &disabled,
+            "# remember this"
+        ));
+        assert!(!should_intercept_memory_quick_add(
+            &enabled,
+            "## Markdown heading"
+        ));
+    }
+}
+
 /// Persist a `# foo` quick-add to the memory file and surface a status
 /// note to the user. Errors land in the same status channel so a missing
 /// memory directory becomes visible without crashing the composer.
@@ -1187,6 +1236,7 @@ fn build_engine_config(app: &App, config: &Config) -> EngineConfig {
         ),
         prefer_bwrap: config.prefer_bwrap.unwrap_or(false),
         memory_enabled: config.memory_enabled(),
+        moraine_fallback: config.moraine_fallback(),
         memory_path: config.memory_path(),
         speech_output_dir: config.speech_output_dir(),
         vision_config: config.vision_model_config(),
@@ -2986,6 +3036,7 @@ async fn run_event_loop(
                         system_prompt_override: false,
                         model: app.model.clone(),
                         workspace: app.workspace.clone(),
+                        mode: app.mode,
                     })
                     .await;
             }
@@ -3593,6 +3644,7 @@ async fn run_event_loop(
                                                 system_prompt_override: false,
                                                 model: app.model.clone(),
                                                 workspace: app.workspace.clone(),
+                                                mode: app.mode,
                                             })
                                             .await;
                                     }
@@ -4616,7 +4668,8 @@ async fn run_event_loop(
                         // appended to the user memory file and the input
                         // is consumed without firing a turn. Disabled
                         // behaviour falls through to normal turn submit.
-                        if config.memory_enabled() && is_memory_quick_add(&input) {
+                        // TODO(v0.8.71): remove legacy quick-add when Moraine recall stable; see #3490, #3495
+                        if should_intercept_memory_quick_add(config, &input) {
                             handle_memory_quick_add(app, &input, config);
                             continue;
                         }
@@ -4659,6 +4712,7 @@ async fn run_event_loop(
                                         system_prompt_override: false,
                                         model: app.model.clone(),
                                         workspace: app.workspace.clone(),
+                                        mode: app.mode,
                                     })
                                     .await;
                             }
@@ -6818,6 +6872,7 @@ async fn switch_provider(
                 system_prompt_override: false,
                 model: app.model.clone(),
                 workspace: app.workspace.clone(),
+                mode: app.mode,
             })
             .await;
     }
@@ -6946,6 +7001,7 @@ async fn apply_provider_fallback_switch(
                 system_prompt_override: false,
                 model: app.model.clone(),
                 workspace: app.workspace.clone(),
+                mode: app.mode,
             })
             .await;
     }
@@ -7066,6 +7122,7 @@ async fn apply_command_result(
                 system_prompt,
                 model,
                 workspace,
+                mode,
             } => {
                 let mut session_id = session_id;
                 let is_full_reset = messages.is_empty() && system_prompt.is_none();
@@ -7082,6 +7139,7 @@ async fn apply_command_result(
                         system_prompt_override: false,
                         model,
                         workspace,
+                        mode,
                     })
                     .await;
                 let _ = engine_handle
@@ -7538,6 +7596,7 @@ async fn apply_command_result(
                                     system_prompt_override: false,
                                     model: app.model.clone(),
                                     workspace: app.workspace.clone(),
+                                    mode: app.mode,
                                 })
                                 .await;
                         }
@@ -7662,6 +7721,7 @@ async fn switch_workspace(
                 system_prompt_override: false,
                 model: app.model.clone(),
                 workspace: workspace.clone(),
+                mode: app.mode,
             })
             .await;
     }
@@ -8400,6 +8460,7 @@ fn render(f: &mut Frame, app: &mut App, config: &Config) {
             crate::config::ApiProvider::NvidiaNim => Some("NIM"),
             crate::config::ApiProvider::Openai => Some("OpenAI"),
             crate::config::ApiProvider::Anthropic => Some("Claude"),
+            crate::config::ApiProvider::Openmodel => None,
             crate::config::ApiProvider::Atlascloud => Some("Atlas"),
             crate::config::ApiProvider::WanjieArk => Some("Wanjie"),
             crate::config::ApiProvider::Volcengine => Some("Volc"),
@@ -9039,6 +9100,7 @@ async fn handle_view_events(
                                 system_prompt_override: false,
                                 model: app.model.clone(),
                                 workspace: app.workspace.clone(),
+                                mode: app.mode,
                             })
                             .await;
                         let _ = engine_handle
@@ -9252,6 +9314,7 @@ async fn handle_view_events(
                             system_prompt_override: false,
                             model: app.model.clone(),
                             workspace: app.workspace.clone(),
+                            mode: app.mode,
                         })
                         .await;
                 }
@@ -9632,6 +9695,7 @@ async fn apply_provider_picker_api_key(
             ApiProvider::Qianfan => &mut providers.qianfan,
             ApiProvider::OpenaiCodex => &mut providers.openai_codex,
             ApiProvider::Anthropic => &mut providers.anthropic,
+            ApiProvider::Openmodel => &mut providers.openmodel,
             ApiProvider::Zai => &mut providers.zai,
             ApiProvider::Stepfun => &mut providers.stepfun,
             ApiProvider::Minimax => &mut providers.minimax,
@@ -9710,6 +9774,7 @@ fn set_provider_auth_mode_in_memory(config: &mut Config, provider: ApiProvider, 
         ApiProvider::Qianfan => &mut providers.qianfan,
         ApiProvider::OpenaiCodex => &mut providers.openai_codex,
         ApiProvider::Anthropic => &mut providers.anthropic,
+        ApiProvider::Openmodel => &mut providers.openmodel,
         ApiProvider::Zai => &mut providers.zai,
         ApiProvider::Stepfun => &mut providers.stepfun,
         ApiProvider::Minimax => &mut providers.minimax,
@@ -9765,6 +9830,9 @@ fn apply_loaded_session(app: &mut App, config: &Config, session: &SavedSession) 
     app.set_model_selection(session.metadata.model.clone());
     app.update_model_compaction_budget();
     apply_workspace_runtime_state(app, config, session.metadata.workspace.clone());
+    if let Some(mode) = session.metadata.mode.as_deref().and_then(AppMode::parse) {
+        app.set_mode(mode);
+    }
     app.session.total_tokens = u32::try_from(session.metadata.total_tokens).unwrap_or(u32::MAX);
     app.session.total_conversation_tokens = app.session.total_tokens;
     app.session.session_cost = session.metadata.cost.session_cost_usd;
@@ -10069,7 +10137,7 @@ fn enable_alternate_scroll_mode<W: Write>(writer: &mut W) {
     set_alternate_scroll_mode(writer, true);
 }
 
-fn disable_alternate_scroll_mode<W: Write>(writer: &mut W) {
+pub(crate) fn disable_alternate_scroll_mode<W: Write>(writer: &mut W) {
     set_alternate_scroll_mode(writer, false);
 }
 
@@ -10134,7 +10202,7 @@ fn enable_windows_ime_console_mode() {
 /// across focus events and are only re-established by `resume_terminal`
 /// after a suspension, which always runs a separate path.
 ///
-fn recover_terminal_modes<W: Write>(
+pub(crate) fn recover_terminal_modes<W: Write>(
     writer: &mut W,
     use_mouse_capture: bool,
     use_bracketed_paste: bool,
@@ -10166,7 +10234,7 @@ fn try_enable_bracketed_paste_mode<W: Write>(writer: &mut W) -> bool {
     }
 }
 
-fn disable_bracketed_paste_mode<W: Write>(writer: &mut W) {
+pub(crate) fn disable_bracketed_paste_mode<W: Write>(writer: &mut W) {
     if let Err(err) = execute!(writer, DisableBracketedPaste) {
         tracing::debug!(?err, "DisableBracketedPaste ignored");
     }

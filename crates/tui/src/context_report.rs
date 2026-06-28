@@ -236,8 +236,12 @@ pub fn build_headless_context_report(config: &Config, workspace: &Path) -> Promp
         crate::tui::app::resolve_skills_dir(workspace, &global_skills_dir, config);
     let mut builder = base_source_entries(&model, workspace, Some(&selected_skills_dir));
     let memory_path = config.memory_path();
+    let memory_enabled = config.memory_enabled();
+    let moraine_fallback = config.moraine_fallback();
 
-    if let Some(memory_block) = crate::memory::compose_block(config.memory_enabled(), &memory_path)
+    // TODO(v0.8.71): remove legacy memory push/inject when Moraine recall stable; see #3490, #3495
+    if let Some(memory_block) =
+        crate::memory::compose_block(memory_enabled && !moraine_fallback, &memory_path)
     {
         builder.push(SourceEntry::text(
             SourceKind::UserMemory,
@@ -254,7 +258,11 @@ pub fn build_headless_context_report(config: &Config, workspace: &Path) -> Promp
             "User memory",
             Some(memory_path.display().to_string()),
             Some(6),
-            "disabled, missing, or empty",
+            if moraine_fallback && memory_enabled {
+                "disabled by moraine_fallback"
+            } else {
+                "disabled, missing, or empty"
+            },
         ));
     }
 
@@ -454,7 +462,10 @@ fn add_app_runtime_entries(builder: &mut ReportBuilder, app: &App) {
         Some(4),
     ));
 
-    if let Some(memory_block) = crate::memory::compose_block(app.use_memory, &app.memory_path) {
+    // TODO(v0.8.71): remove legacy memory push/inject when Moraine recall stable; see #3490, #3495
+    if let Some(memory_block) =
+        crate::memory::compose_block(app.use_memory && !app.moraine_fallback, &app.memory_path)
+    {
         builder.push(SourceEntry::text(
             SourceKind::UserMemory,
             "User memory",
@@ -470,7 +481,11 @@ fn add_app_runtime_entries(builder: &mut ReportBuilder, app: &App) {
             "User memory",
             Some(app.memory_path.display().to_string()),
             Some(6),
-            "disabled, missing, or empty",
+            if app.moraine_fallback && app.use_memory {
+                "disabled by moraine_fallback"
+            } else {
+                "disabled, missing, or empty"
+            },
         ));
     }
 
@@ -754,6 +769,7 @@ mod tests {
     use crate::config::Config;
     use crate::models::Tool;
     use std::fs;
+    use std::path::PathBuf;
     use tempfile::tempdir;
 
     #[test]
@@ -840,6 +856,90 @@ mod tests {
         let json = context_report_json(&report);
         assert!(json.contains("\"repo_constitution\""));
         assert!(json.contains("branch_policy appears stale"));
+    }
+
+    #[test]
+    fn app_context_report_omits_legacy_memory_when_moraine_fallback_enabled() {
+        let tmp = tempdir().expect("tempdir");
+        let memory_path = tmp.path().join("memory.md");
+        fs::write(&memory_path, "private legacy memory").expect("write memory");
+        let config: Config = toml::from_str(
+            r#"
+            [memory]
+            enabled = true
+            moraine_fallback = true
+            "#,
+        )
+        .expect("parse config");
+        let app = App::new(
+            crate::tui::app::TuiOptions {
+                model: "deepseek-v4-pro".to_string(),
+                workspace: tmp.path().to_path_buf(),
+                config_path: None,
+                config_profile: None,
+                allow_shell: false,
+                use_alt_screen: false,
+                use_mouse_capture: false,
+                use_bracketed_paste: false,
+                max_subagents: 1,
+                skills_dir: PathBuf::from("."),
+                memory_path: memory_path.clone(),
+                notes_path: tmp.path().join("notes.txt"),
+                mcp_config_path: tmp.path().join("mcp.json"),
+                use_memory: true,
+                start_in_agent_mode: true,
+                skip_onboarding: true,
+                yolo: false,
+                resume_session_id: None,
+                initial_input: None,
+            },
+            &config,
+        );
+
+        assert!(app.moraine_fallback);
+        let report = build_context_report(&app);
+        let memory_entry = report
+            .entries
+            .iter()
+            .find(|entry| entry.source_kind == SourceKind::UserMemory)
+            .expect("user memory source entry");
+
+        assert_eq!(memory_entry.activation_reason, ActivationReason::Omitted);
+        assert_eq!(
+            memory_entry.truncation_reason.as_deref(),
+            Some("disabled by moraine_fallback")
+        );
+        assert!(!context_report_json(&report).contains("private legacy memory"));
+    }
+
+    #[test]
+    fn headless_context_report_omits_legacy_memory_when_moraine_fallback_enabled() {
+        let tmp = tempdir().expect("tempdir");
+        let memory_path = tmp.path().join("memory.md");
+        fs::write(&memory_path, "private legacy memory").expect("write memory");
+        let mut config: Config = toml::from_str(
+            r#"
+            [memory]
+            enabled = true
+            moraine_fallback = true
+            "#,
+        )
+        .expect("parse config");
+        config.memory_path = Some(memory_path.to_string_lossy().into_owned());
+
+        let report = build_headless_context_report(&config, tmp.path());
+        let memory_entry = report
+            .entries
+            .iter()
+            .find(|entry| entry.source_kind == SourceKind::UserMemory)
+            .expect("user memory source entry");
+
+        assert_eq!(memory_entry.activation_reason, ActivationReason::Omitted);
+        assert_eq!(
+            memory_entry.truncation_reason.as_deref(),
+            Some("disabled by moraine_fallback")
+        );
+        assert!(!context_report_json(&report).contains("private legacy memory"));
     }
 
     #[test]

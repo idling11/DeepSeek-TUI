@@ -10,6 +10,7 @@ use crate::core::ops::UserInputProvenance;
 use crate::prompt_zones::PinnedPrefix;
 
 const MAX_APPROVAL_INTENT_SUMMARY_CHARS: usize = 2_000;
+const TOOL_ERROR_DEGRADATION_THRESHOLD: u32 = 2;
 
 fn approval_intent_summary(text: &str) -> Option<String> {
     let trimmed = text.trim();
@@ -40,6 +41,152 @@ pub(super) fn registered_tool_approval_required(
         return true;
     }
     !auto_approve
+}
+
+pub(super) fn tool_error_degradation_runtime_hint(
+    consecutive_tool_error_steps: u32,
+    step_error_tool_names: &[String],
+    step_error_categories: &[ErrorCategory],
+    step_error_tool_inputs: &[serde_json::Value],
+) -> Option<String> {
+    if consecutive_tool_error_steps < TOOL_ERROR_DEGRADATION_THRESHOLD {
+        return None;
+    }
+    if !step_error_categories
+        .iter()
+        .any(|category| tool_error_category_allows_degradation(*category))
+    {
+        return None;
+    }
+
+    let mut tool_names = step_error_tool_names
+        .iter()
+        .map(|name| name.trim())
+        .filter(|name| !name.is_empty())
+        .collect::<Vec<_>>();
+    tool_names.sort_unstable();
+    tool_names.dedup();
+    let tools = if tool_names.is_empty() {
+        "tools".to_string()
+    } else {
+        tool_names.join(", ")
+    };
+
+    let mut hint = format!(
+        "Tool calls have failed for {consecutive_tool_error_steps} consecutive steps ({tools}). \
+do not repeat the same call unchanged; switch to an alternate tool or source, narrow the request, \
+or ask for the required input before trying again."
+    );
+    if let Some(direct_url_hint) =
+        direct_url_pattern_fallback_hint(step_error_tool_names, step_error_tool_inputs)
+    {
+        hint.push(' ');
+        hint.push_str(&direct_url_hint);
+    }
+    Some(hint)
+}
+
+fn tool_error_category_allows_degradation(category: ErrorCategory) -> bool {
+    matches!(
+        category,
+        ErrorCategory::Network
+            | ErrorCategory::RateLimit
+            | ErrorCategory::Timeout
+            | ErrorCategory::Tool
+    )
+}
+
+fn direct_url_pattern_fallback_hint(
+    step_error_tool_names: &[String],
+    step_error_tool_inputs: &[serde_json::Value],
+) -> Option<String> {
+    let mut domains = std::collections::BTreeSet::new();
+    for (tool_name, input) in step_error_tool_names
+        .iter()
+        .zip(step_error_tool_inputs.iter())
+    {
+        if matches!(tool_name.as_str(), "web_search" | "web.run") {
+            collect_search_domains(input, &mut domains);
+        }
+    }
+
+    let domain = domains.into_iter().next()?;
+    Some(format!(
+        "For blocked search, try fetch_url directly on likely URL patterns such as \
+https://{domain}/announcements and https://{domain}/news."
+    ))
+}
+
+fn collect_search_domains(
+    input: &serde_json::Value,
+    domains: &mut std::collections::BTreeSet<String>,
+) {
+    if let Some(values) = input.get("domains").and_then(serde_json::Value::as_array) {
+        for value in values {
+            if let Some(domain) = value.as_str().and_then(normalize_domain_candidate) {
+                domains.insert(domain);
+            }
+        }
+    }
+    for key in ["query", "q"] {
+        if let Some(query) = input.get(key).and_then(serde_json::Value::as_str) {
+            collect_query_domains(query, domains);
+        }
+    }
+    if let Some(searches) = input
+        .get("search_query")
+        .and_then(serde_json::Value::as_array)
+    {
+        for search in searches {
+            collect_search_domains(search, domains);
+        }
+    }
+}
+
+fn collect_query_domains(query: &str, domains: &mut std::collections::BTreeSet<String>) {
+    for token in query.split_whitespace() {
+        let token = token.trim_matches(|c: char| {
+            matches!(
+                c,
+                '"' | '\'' | '`' | '(' | ')' | '[' | ']' | '{' | '}' | ',' | ';'
+            )
+        });
+        if let Some(site) = token.strip_prefix("site:") {
+            if let Some(domain) = normalize_domain_candidate(site) {
+                domains.insert(domain);
+            }
+        } else if let Some(domain) = normalize_domain_candidate(token) {
+            domains.insert(domain);
+        }
+    }
+}
+
+fn normalize_domain_candidate(value: &str) -> Option<String> {
+    let value = value
+        .trim()
+        .trim_matches(|c: char| matches!(c, '"' | '\'' | '`' | '<' | '>' | '.' | ',' | ';' | ':'));
+    if value.is_empty() {
+        return None;
+    }
+    let without_scheme = value
+        .strip_prefix("https://")
+        .or_else(|| value.strip_prefix("http://"))
+        .unwrap_or(value);
+    let host = without_scheme
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or("")
+        .trim()
+        .trim_start_matches("www.")
+        .to_ascii_lowercase();
+    let looks_like_domain = host.contains('.')
+        && host
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '.'))
+        && host.rsplit('.').next().is_some_and(|suffix| {
+            suffix.len() >= 2 && suffix.chars().any(|c| c.is_ascii_alphabetic())
+        });
+    if looks_like_domain { Some(host) } else { None }
 }
 
 fn registered_tool_requires_non_bypassable_approval(tool_name: &str) -> bool {
@@ -2235,6 +2382,8 @@ impl Engine {
             // (e.g.) a Tool failure that should escalate from a permission
             // denial that should not.
             let mut step_error_categories: Vec<ErrorCategory> = Vec::new();
+            let mut step_error_tool_names: Vec<String> = Vec::new();
+            let mut step_error_tool_inputs: Vec<serde_json::Value> = Vec::new();
             let mut stop_after_plan_tool = false;
 
             for outcome in outcomes.into_iter().flatten() {
@@ -2311,6 +2460,8 @@ impl Engine {
                         }));
                         step_error_count += 1;
                         step_error_categories.push(envelope.category);
+                        step_error_tool_names.push(outcome.name.clone());
+                        step_error_tool_inputs.push(tool_input.clone());
                         let error = format_tool_error(&e, &outcome.name);
                         self.session.working_set.observe_tool_call(
                             &tool_name_for_ws,
@@ -2351,6 +2502,18 @@ impl Engine {
 
             if step_error_count > 0 {
                 consecutive_tool_error_steps = consecutive_tool_error_steps.saturating_add(1);
+                if let Some(hint) = tool_error_degradation_runtime_hint(
+                    consecutive_tool_error_steps,
+                    &step_error_tool_names,
+                    &step_error_categories,
+                    &step_error_tool_inputs,
+                ) {
+                    self.add_session_message(self.runtime_text_message_with_turn_metadata(
+                        hint,
+                        UserInputProvenance::Runtime,
+                    ))
+                    .await;
+                }
             } else {
                 consecutive_tool_error_steps = 0;
             }

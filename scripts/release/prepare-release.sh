@@ -77,7 +77,7 @@ bump(
 )
 
 # 4) README install-tag examples (all translations).
-for readme in ["README.md", "README.zh-CN.md", "README.ja-JP.md", "README.vi.md"]:
+for readme in ["README.md", "README.zh-CN.md", "README.ja-JP.md", "README.vi.md", "README.ko-KR.md"]:
     bump(readme, rf"--tag v{old_re}\b", f"--tag v{new}", 1)
 PY
 

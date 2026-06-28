@@ -10,6 +10,7 @@ import {
   helpText,
   isAllowed,
   isGroupChat,
+  isTelegramMarkdownParseError,
   latestRunningTurn,
   looksLikePollingConflict,
   pairingRefusalText,
@@ -21,6 +22,8 @@ import {
   stripGroupPrefix,
   threadListKeyboard,
   telegramIdentity,
+  telegramMessageBody,
+  telegramPollingConflictDelayMs,
   telegramRetryDelayMs,
   telegramSendRetryDelayMs
 } from "./lib.mjs";
@@ -28,6 +31,7 @@ import { ThreadStore as CoreThreadStore } from "../../bridge-core/src/lib.mjs";
 
 const TYPING_INTERVAL_MS = 2000;
 const TYPING_TIMEOUT_MS = 1500;
+const LAST_SEQ_FLUSH_INTERVAL_MS = 2000;
 
 class ThreadStore extends CoreThreadStore {
   constructor(filePath) {
@@ -67,7 +71,10 @@ const config = {
 const threadStore = await ThreadStore.open(config.threadMapPath);
 const activeTurnTasks = new Map();
 let stopping = false;
-let updateOffset = Number(process.env.TELEGRAM_UPDATE_OFFSET || 0);
+let updateOffset = threadStore.getCursor(
+  "telegram.update_offset",
+  Number(process.env.TELEGRAM_UPDATE_OFFSET || 0)
+);
 
 function requestStop() {
   stopping = true;
@@ -107,6 +114,7 @@ async function configureBotCommands() {
 }
 
 async function pollTelegram() {
+  let pollingConflictAttempts = 0;
   while (!stopping) {
     try {
       const updates = await telegramApi("getUpdates", {
@@ -114,18 +122,32 @@ async function pollTelegram() {
         timeout: config.pollTimeoutSeconds,
         allowed_updates: ["message", "callback_query"]
       });
+      pollingConflictAttempts = 0;
       for (const update of updates || []) {
-        if (update.update_id != null) updateOffset = Math.max(updateOffset, update.update_id + 1);
-        await handleIncomingUpdate(update).catch((error) => {
+        try {
+          await handleIncomingUpdate(update);
+          await markUpdateHandled(update);
+        } catch (error) {
           console.error("failed to handle incoming Telegram update", error);
-        });
+          break;
+        }
       }
     } catch (error) {
       if (looksLikePollingConflict(error)) {
-        console.warn("Telegram getUpdates conflict; another bridge is polling this bot. Retrying in 10s.");
-        await delay(10000);
+        const waitMs = telegramPollingConflictDelayMs(pollingConflictAttempts);
+        pollingConflictAttempts += 1;
+        if (waitMs == null) {
+          throw new Error(
+            "Telegram getUpdates conflict; another bridge is polling this bot token. Stop the other bridge process or use a different token."
+          );
+        }
+        console.warn(
+          `Telegram getUpdates conflict; another bridge is polling this bot. Retrying in ${Math.round(waitMs / 1000)}s.`
+        );
+        await delay(waitMs);
         continue;
       }
+      pollingConflictAttempts = 0;
       const waitMs = telegramRetryDelayMs(error);
       console.error(`Telegram poll failed: ${error.message}. Retrying in ${Math.round(waitMs / 1000)}s.`);
       await delay(waitMs);
@@ -133,8 +155,18 @@ async function pollTelegram() {
   }
 }
 
+async function markUpdateHandled(update) {
+  if (update.update_id == null) return;
+  if (!Number.isFinite(Number(update.update_id))) return;
+  const nextOffset = Math.max(updateOffset, Number(update.update_id) + 1);
+  if (nextOffset === updateOffset) return;
+  updateOffset = nextOffset;
+  await threadStore.setCursor("telegram.update_offset", updateOffset);
+}
+
 async function handleIncomingUpdate(update) {
   if (update.callback_query) {
+    if (await isReplayCallbackUpdate(update)) return;
     await handleCallbackQuery(update.callback_query);
     return;
   }
@@ -173,6 +205,11 @@ async function handleIncomingUpdate(update) {
 
   const command = parseCommand(scoped.text);
   await handleCommand(identity.chatId, command);
+}
+
+async function isReplayCallbackUpdate(update) {
+  if (update.update_id == null) return false;
+  return threadStore.recordMessage(`callback:${update.update_id}`);
 }
 
 async function handleCommand(chatId, command) {
@@ -296,6 +333,7 @@ async function handleStoredAction(chatId, action, query = null) {
   }
 
   if (stored.kind === "resume") {
+    await threadStore.takeAction(action.token);
     await resumeThread(chatId, stored.threadId);
     return;
   }
@@ -525,9 +563,19 @@ async function streamTurnEvents(chatId, threadId, turnId, sinceSeq, options = {}
   }
   let responseText = "";
   let latestSeq = sinceSeq;
+  let flushedSeq = sinceSeq;
+  let lastSeqFlushAt = 0;
   let sentProgressAt = Date.now();
   let typingPaused = false;
   let typingInFlight = false;
+
+  async function flushLastSeq(force = false) {
+    if (latestSeq <= flushedSeq) return;
+    if (!force && Date.now() - lastSeqFlushAt < LAST_SEQ_FLUSH_INTERVAL_MS) return;
+    await threadStore.patchChat(chatId, { lastSeq: latestSeq });
+    flushedSeq = latestSeq;
+    lastSeqFlushAt = Date.now();
+  }
 
   const tickTyping = async () => {
     if (stopping || typingPaused || typingInFlight) return;
@@ -563,7 +611,7 @@ async function streamTurnEvents(chatId, threadId, turnId, sinceSeq, options = {}
       if (!event.data) continue;
       const record = JSON.parse(event.data);
       latestSeq = Math.max(latestSeq, Number(record.seq || 0));
-      await threadStore.patchChat(chatId, { lastSeq: latestSeq });
+      await flushLastSeq(false);
 
       if (turnId && record.turn_id && record.turn_id !== turnId) continue;
       const lifecycleStatus =
@@ -668,6 +716,7 @@ async function streamTurnEvents(chatId, threadId, turnId, sinceSeq, options = {}
     clearInterval(typingTimer);
     clearTimeout(timeout);
     options.signal?.removeEventListener("abort", abortFromCaller);
+    await flushLastSeq(true);
   }
 }
 
@@ -816,13 +865,26 @@ async function sendText(chatId, text, options = {}) {
   for (const [index, chunk] of chunks.entries()) {
     const body = {
       chat_id: chatId,
-      text: chunk,
+      ...telegramMessageBody(chunk, { markdown: true, maxChars: config.maxReplyChars }),
       disable_web_page_preview: true
     };
     if (options.replyMarkup && index === chunks.length - 1) {
       body.reply_markup = options.replyMarkup;
     }
-    await telegramApi("sendMessage", body);
+    try {
+      await telegramApi("sendMessage", body);
+    } catch (error) {
+      if (!isTelegramMarkdownParseError(error)) throw error;
+      const fallbackBody = {
+        chat_id: chatId,
+        ...telegramMessageBody(chunk, { markdown: false, maxChars: config.maxReplyChars }),
+        disable_web_page_preview: true
+      };
+      if (options.replyMarkup && index === chunks.length - 1) {
+        fallbackBody.reply_markup = options.replyMarkup;
+      }
+      await telegramApi("sendMessage", fallbackBody);
+    }
   }
 }
 

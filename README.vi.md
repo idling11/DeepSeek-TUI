@@ -8,7 +8,7 @@ CodeWhale nói chuyện native với Anthropic Claude và OpenAI khi đó là th
 đang có. Công cụ qua cổng phê duyệt, sandbox cấp hệ điều hành, và rollback
 bằng `/restore` cho mọi lượt.
 
-[English README](README.md) · [简体中文 README](README.zh-CN.md) · [日本語 README](README.ja-JP.md) · [codewhale.net](https://codewhale.net/) · [Hướng dẫn cài đặt](docs/INSTALL.md) · [Danh mục provider](docs/PROVIDERS.md) · [Changelog](CHANGELOG.md)
+[English README](README.md) · [简体中文 README](README.zh-CN.md) · [日本語 README](README.ja-JP.md) · [한국어 README](README.ko-KR.md) · [codewhale.net](https://codewhale.net/) · [Hướng dẫn cài đặt](docs/INSTALL.md) · [Danh mục provider](docs/PROVIDERS.md) · [Changelog](CHANGELOG.md)
 
 [![CI](https://github.com/Hmbown/CodeWhale/actions/workflows/ci.yml/badge.svg)](https://github.com/Hmbown/CodeWhale/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/codewhale-cli?label=crates.io)](https://crates.io/crates/codewhale-cli)
